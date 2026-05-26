@@ -1,6 +1,6 @@
 # Pat
 
-**Pat** is a developer-first payment abstraction layer built to simplify payment gateway integrations in Nigeria.
+**Pat** is a developer-first payment abstraction layer built to simplify payment gateway integrations.
 
 Instead of integrating separately with multiple providers like Paystack, Flutterwave, or Interswitch, developers integrate once with Pat and get a unified API experience across providers.
 
