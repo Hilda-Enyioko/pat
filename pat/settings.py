@@ -39,10 +39,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'payments',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -118,3 +120,34 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+CORS_ALLOW_ALL_ORIGINS = True  # tighten this post-MVP
+
+PAT_CONFIG = {
+    'DEFAULT_GATEWAY': config('DEFAULT_GATEWAY', default='paystack'),
+    'FALLBACK_GATEWAY': config('FALLBACK_GATEWAY', default='flutterwave'),
+    'GATEWAYS': {
+        'paystack': {
+            'secret_key': config('PAYSTACK_SECRET_KEY', default=''),
+            'public_key': config('PAYSTACK_PUBLIC_KEY', default=''),
+            'base_url': 'https://api.paystack.co',
+        },
+        'flutterwave': {
+            'secret_key': config('FLW_SECRET_KEY', default=''),
+            'public_key': config('FLW_PUBLIC_KEY', default=''),
+            'encryption_key': config('FLW_ENCRYPTION_KEY', default=''),
+            'base_url': 'https://api.flutterwave.com/v3',
+        },
+        'interswitch': {
+            'client_id': config('INTERSWITCH_CLIENT_ID', default=''),
+            'client_secret': config('INTERSWITCH_CLIENT_SECRET', default=''),
+            'base_url': 'https://sandbox.interswitchng.com',
+        },
+        'zest': {
+            'api_key': config('ZEST_API_KEY', default=''),
+            'merchant_id': config('ZEST_MERCHANT_ID', default=''),
+            'base_url': 'https://api.dev.gateway.zestpayment.com',
+        },
+    },
+    'WEBHOOK_SECRET': config('WEBHOOK_SECRET', default=''),
+}
