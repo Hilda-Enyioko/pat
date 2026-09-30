@@ -1,9 +1,33 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum ErrorCode {
-    #[msg("Only the counter authority can update this counter")]
-    Unauthorized,
-    #[msg("Counter has reached the maximum value")]
-    CounterOverflow,
+pub enum PatError {
+    #[msg("Invalid or missing ed25519 signature instruction")]
+    InvalidSignature,
+    #[msg("Signer is not the reservation owner")]
+    PayerMismatch,
+    #[msg("Intent does not reference this reservation")]
+    ReservationMismatch,
+    #[msg("Intent is for a different cluster")]
+    WrongCluster,
+    #[msg("Unsupported intent version")]
+    UnsupportedVersion,
+    #[msg("Intent expiry is invalid or outlives the reservation")]
+    InvalidIntentWindow,
+    #[msg("Intent's ledger claim is inconsistent with the reservation")]
+    InvalidLedgerClaim,
+    #[msg("Settlement window has closed")]
+    SettleWindowClosed,
+    #[msg("Amount exceeds per-payment cap")]
+    ExceedsPerPaymentCap,
+    #[msg("Insufficient remaining reservation capacity")]
+    InsufficientCapacity,
+    #[msg("Rent reserve exhausted")]
+    RentReserveExhausted,
+    #[msg("Amount must be greater than zero")]
+    ZeroAmount,
+    #[msg("Cannot withdraw before settle deadline")]
+    WithdrawTooEarly,
+    #[msg("Arithmetic overflow")]
+    Overflow,
 }

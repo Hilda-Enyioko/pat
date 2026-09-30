@@ -6,20 +6,11 @@ pub mod state;
 use anchor_lang::prelude::*;
 
 pub use constants::*;
-pub use instructions::*;
 pub use state::*;
 
 declare_id!("HpSkCuHays9S7gAVs45BcU6t2gjjeE6dEdy3TwyqcwB8");
 
 #[program]
 pub mod pat {
-    use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        crate::instructions::initialize::handle_initialize(ctx)
-    }
-
-    pub fn increment(ctx: Context<Increment>) -> Result<()> {
-        crate::instructions::increment::handle_increment(ctx)
-    }
+    // instructions will live here
 }
