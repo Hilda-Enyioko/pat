@@ -1,133 +1,317 @@
 # PAT
 
-### Primitive Airborne Transaction
+## Primitive Airborne Transaction
 
-PAT is a self-custodial payment protocol designed to enable **offline-friendly Solana transactions** between users and merchants, even when internet connectivity is unreliable.
+**Reserve while connected. Spend while disconnected. Settle when reconnected.**
 
-The project explores how Solana's transaction infrastructure can be adapted for environments where a user may temporarily lose access to the internet but still needs to initiate a payment.
+PAT is a self-custodial payment protocol built on Solana that explores how users can make merchant payments during temporary connectivity loss without giving up control of their funds.
 
----
-
-## 1. What This Repository Is
-
-This repository contains the source code for **PAT (Primitive Airborne Transaction)**, a Solana-based payment protocol and Progressive Web App (PWA).
-
-It brings together on-chain programs, client-side wallet functionality, and offline transaction workflows to experiment with reliable peer-to-merchant payments under intermittent connectivity.
+Instead of attempting to create an on-chain payment while completely offline, PAT establishes a **bounded offline spending allowance while the user is online**. When connectivity is lost, the user can spend from that reserved allowance, transfer the signed payment locally, and allow the transaction to settle on Solana once connectivity returns.
 
 ---
 
-## 2. What the Project Does
+## The Problem
 
-PAT allows a sender to prepare and sign a transaction while offline, transfer the transaction data to a merchant through a local mechanism such as **QR code**, and allow the transaction to be broadcast and settled once connectivity becomes available.
+Digital payments assume that the internet is always available.
 
-The core flow is:
+But network connectivity can disappear at exactly the moment a payment needs to happen.
 
-**Create → Sign → Transfer → Broadcast → Confirm**
+A customer may be:
 
-The protocol uses Solana primitives such as **Durable Nonce Accounts** and on-chain transaction logic to help preserve the validity of transactions during periods of connectivity loss.
+* In an area with poor network coverage
+* Experiencing a temporary network outage
+* In a crowded location where cellular networks are congested
+* Shopping in a rural or underserved area
+* Temporarily without mobile data
 
----
+Normally, the options are simple:
 
-## 3. What It Is Built For
+> **Wait for connectivity or don't complete the payment.**
 
-PAT is built for environments where reliable internet access cannot be assumed.
-
-Potential use cases include:
-
-* Offline or low-connectivity merchant payments
-* Rural and underserved communities
-* Temporary network outages
-* Markets and events with unreliable connectivity
-* Peer-to-merchant payments where both parties may not be continuously online
-* Mobile-first payment experiences
-
-The project is built around the idea that **a payment should not necessarily fail simply because the internet temporarily disappears.**
-
-### Technology Stack
-
-**On-chain**
-
-* Solana
-* Anchor
-* Rust
-* Solana Durable Nonce Accounts
-
-**Client-side**
-
-* React
-* Progressive Web App (PWA)
-* `@solana/web3.js`
-* Solana Wallet Adapter
-* IndexedDB / localForage
-
-**Offline Transfer**
-
-* QR code generation
-* QR code scanning
-
-**Development**
-
-* Solana CLI
-* Anchor CLI
-* Solana Devnet / Localnet
+PAT explores a different approach.
 
 ---
 
-## 4. Who Built It
+## How PAT Works
 
-PAT was built by:
+PAT separates **payment authorization** from **blockchain settlement**.
 
-### Hilda Enyioko
+### 1. Reserve
 
-Backend / Full-Stack Engineer with a focus on **payment systems, financial infrastructure, and distributed systems**.
+While online, the user establishes a bounded offline spending allowance.
 
-Hilda's work spans backend engineering, fintech, payment integrations, and blockchain development, with experience working with technologies including **TypeScript, Python, Django, NestJS, PostgreSQL, Redis, Paystack, Interswitch, Solana, and Anchor**.
+For example:
+
+```text
+Wallet Balance:          10 SOL
+Offline Spending Limit:  1 SOL
+Reserved Allowance:      1 SOL
+```
+
+The allowance is secured on-chain before the user goes offline.
+
+### 2. Go Offline
+
+The user loses internet connectivity.
+
+Their wallet and PAT client can still access the previously established offline spending capacity.
+
+### 3. Spend
+
+The user creates and signs a payment from the reserved allowance.
+
+The signed transaction/payment data can be transferred to the merchant locally, for example through a QR code.
+
+```text
+Customer
+   │
+   │ Signed payment
+   ▼
+  QR Code
+   │
+   ▼
+Merchant
+```
+
+The merchant can verify that the payment belongs to the user's authorized offline spending capacity.
+
+### 4. Reconnect
+
+When internet connectivity returns, PAT automatically submits the pending transaction to Solana.
+
+```text
+Offline
+   │
+   ▼
+Signed
+   │
+   ▼
+Reserved
+   │
+   ▼
+Accepted Offline
+   │
+   │ Network returns
+   ▼
+Broadcast
+   │
+   ▼
+Confirmed
+```
+
+### 5. Settle
+
+The transaction is finally broadcast and confirmed on-chain.
+
+The merchant can distinguish between:
+
+**Offline Accepted**
+
+> The payment has been authorized against the user's reserved offline allowance.
+
+and:
+
+**Confirmed**
+
+> The payment has been settled on Solana.
+
+This distinction prevents PAT from claiming that an offline payment is already blockchain-confirmed when it is not.
 
 ---
 
-## 5. Content
+## Why PAT?
 
-This repository contains:
+PAT is built around a simple idea:
 
-* Solana programs
-* Anchor/Rust smart contract code
-* React PWA client
-* Wallet integration
-* Offline transaction handling
-* QR-based transaction transfer
-* Durable nonce transaction flow
-* Local development configuration
-* Documentation and project resources
+> **Connectivity should not have to determine whether a payment can happen.**
 
-> **Note:** PAT is currently a prototype and is intended for experimentation and demonstration. It should not be used for real-value transactions without appropriate security review and production hardening.
+The protocol explores a middle ground between two extremes:
+
+**Traditional online payment**
+
+```text
+Create → Sign → Broadcast → Confirm
+                  ↑
+              Requires internet
+```
+
+**PAT**
+
+```text
+Reserve → Sign → Transfer → [Offline]
+                              │
+                         Connectivity
+                              │
+                              ▼
+                         Broadcast
+                              │
+                              ▼
+                           Confirm
+```
+
+The key primitive is the **bounded offline spending allowance**.
+
+The user does not receive unlimited permission to spend while offline. Their offline spending capacity is constrained by funds that were previously reserved on-chain.
 
 ---
 
-## 6. Project Resources
+## Core Architecture
 
-### 🎥 Pitch Video
+PAT consists of three primary components.
 
-**Coming soon**
+### On-chain Program
 
-> Dummy link: `https://example.com/pat-pitch`
+Built with **Anchor and Rust**, the Solana program manages the user's offline spending allowance and reservation state.
 
-A short presentation explaining the problem, the PAT protocol, and the motivation behind offline-friendly Solana payments.
+The reservation acts as a spending boundary that limits how much value can be committed through the offline payment flow.
 
-### 🌐 Live Demo
+### Client-side Queue
 
-**Coming soon**
+The React PWA maintains pending payments locally using browser storage.
 
-> Dummy link: `https://pat-demo.example.com`
+When a payment is created offline, the client stores the required transaction data and tracks its state until connectivity becomes available.
 
-The live web application demonstrating the PAT payment flow.
+### Settlement State Machine
 
-### 🎬 Demo Video
+PAT exposes the lifecycle of each payment:
 
-**Coming soon**
+```text
+SIGNED
+   ↓
+RESERVED
+   ↓
+OFFLINE_ACCEPTED
+   ↓
+BROADCAST
+   ↓
+CONFIRMED
+```
 
-> Dummy link: `https://example.com/pat-demo`
+This allows both the application and merchant interface to clearly communicate where a payment currently stands.
 
-A walkthrough showing the complete flow from transaction creation and signing to QR transfer, broadcasting, and confirmation.
+---
+
+## Offline Payment Example
+
+Suppose a user has:
+
+```text
+Wallet balance:       10 SOL
+Offline allowance:     1 SOL
+```
+
+The user goes offline.
+
+They purchase something worth:
+
+```text
+0.25 SOL
+```
+
+PAT can commit that payment against the previously reserved allowance.
+
+The remaining offline capacity becomes:
+
+```text
+1.00 SOL
+-0.25 SOL
+─────────
+0.75 SOL
+```
+
+The merchant receives the payment locally and sees:
+
+> **Payment accepted offline**
+
+Once the user reconnects, PAT broadcasts the transaction and the merchant eventually sees:
+
+> **Payment confirmed**
+
+---
+
+## Security Model
+
+PAT is designed around **bounded trust rather than unlimited offline spending**.
+
+The offline allowance provides a predefined spending boundary.
+
+This means the system does not simply rely on:
+
+> "The user says they will pay later."
+
+Instead, PAT attempts to establish spending capacity before connectivity is lost and then constrain offline payments to that capacity.
+
+The prototype is intended to explore this model and should undergo additional security review before handling real-value transactions.
+
+---
+
+## Tech Stack
+
+### Blockchain
+
+* **Solana**
+* **Rust**
+* **Anchor**
+* **Durable Nonce Accounts**
+
+### Client
+
+* **React**
+* **TypeScript**
+* **Progressive Web App (PWA)**
+* **@solana/web3.js**
+* **Solana Wallet Adapter**
+
+### Local Storage
+
+* **IndexedDB**
+* **localForage**
+
+### Offline Transfer
+
+* **QR code generation**
+* **QR code scanning**
+
+### Development
+
+* **Solana CLI**
+* **Anchor CLI**
+* **Solana Devnet / Localnet**
+* **Git / GitHub**
+
+---
+
+## Project Structure
+
+```text
+pat/
+├── programs/
+│   └── pat/
+│       └── src/
+│           └── lib.rs
+│
+├── app/
+│   └── ...
+│
+├── tests/
+│   └── ...
+│
+├── Anchor.toml
+├── Cargo.toml
+└── README.md
+```
+
+---
+
+## Who Built PAT?
+
+**Hilda Enyioko**
+
+Backend / Full-Stack Engineer focused on payment systems, financial infrastructure, and distributed systems.
+
+Hilda has worked across fintech, payment integrations, backend systems, and blockchain development, with experience using technologies including TypeScript, Python, Django, NestJS, PostgreSQL, Redis, Paystack, Interswitch, Solana, and Anchor.
+
+PAT was created to explore how blockchain payment infrastructure can remain useful when one of the assumptions it normally depends on, **continuous connectivity**, temporarily disappears.
 
 ---
 
@@ -135,4 +319,57 @@ A walkthrough showing the complete flow from transaction creation and signing to
 
 🚧 **Prototype / Hackathon Project**
 
-PAT is actively being developed. Features, architecture, and implementation details may change as the protocol evolves.
+PAT is an experimental project exploring offline-friendly, self-custodial payments on Solana.
+
+The current implementation is intended for demonstration and research rather than production financial use.
+
+---
+
+## Project Resources
+
+### 🎥 Pitch Video
+
+Coming soon.
+
+**Dummy link:**
+`https://example.com/pat-pitch`
+
+A short explanation of the problem, the PAT protocol, and the reservation-based offline payment model.
+
+### 🌐 Live Demo
+
+Coming soon.
+
+**Dummy link:**
+`https://pat-demo.example.com`
+
+### 🎬 Demo Video
+
+Coming soon.
+
+**Dummy link:**
+`https://example.com/pat-demo`
+
+The demo will show:
+
+1. Establishing an offline spending allowance
+2. Losing connectivity
+3. Creating and signing a payment
+4. Transferring the payment to a merchant
+5. Showing the **Offline Accepted** state
+6. Restoring connectivity
+7. Broadcasting the transaction
+8. Showing the final **Confirmed** state
+9. Demonstrating the offline spending limit
+
+---
+
+## The Idea
+
+PAT is built around one simple principle:
+
+> **Reserve while connected. Spend while disconnected. Settle when reconnected.**
+
+The goal is not to replace online payments.
+
+It is to make temporary loss of connectivity **less capable of stopping a payment altogether**.
