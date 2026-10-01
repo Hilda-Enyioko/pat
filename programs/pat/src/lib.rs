@@ -39,4 +39,8 @@ pub mod pat {
         instructions::settle::handle_settle(ctx, intent)
     }
 
+    pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
+        instructions::withdraw::handle_withdraw(ctx)
+    }
+
 }

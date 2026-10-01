@@ -42,6 +42,12 @@ pub enum PatError {
     InvalidMaxPayments,
     #[msg("Reservation lamport invariant violated")]
     LamportInvariantBroken,
+
+    // -- Settle Errors
     #[msg("Merchant account does not match the intent")]
     MerchantMismatch,
+
+    // --Withdraw Errors
+    #[msg("Only the reservation owner can withdraw")]
+    NotReservationOwner,
 }
