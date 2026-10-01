@@ -1,375 +1,338 @@
-# PAT
-
-## Primitive Airborne Transaction
+# PAT: Primitive Airborne Transaction
 
 **Reserve while connected. Spend while disconnected. Settle when reconnected.**
 
-PAT is a self-custodial payment protocol built on Solana that explores how users can make merchant payments during temporary connectivity loss without giving up control of their funds.
+PAT is a self-custodial payment protocol on Solana for temporary connectivity loss. A payer locks a bounded spending allowance on-chain while online. Later, with no internet at all, the payer signs a payment authorization against that allowance and hands it to a merchant locally (for example as a QR code). The merchant, who only needs connectivity on their own side, submits it to the PAT program, which verifies the signature and moves funds from the reservation to the merchant.
 
-Instead of attempting to create an on-chain payment while completely offline, PAT establishes a **bounded offline spending allowance while the user is online**. When connectivity is lost, the user can spend from that reserved allowance, transfer the signed payment locally, and allow the transaction to settle on Solana once connectivity returns.
+> **Status: prototype / hackathon project.** Deployed on devnet. Not for real-value use without an independent security review. See [Security model and honest limits](#security-model-and-honest-limits).
 
----
-
-## The Problem
-
-Digital payments assume that the internet is always available.
-
-But network connectivity can disappear at exactly the moment a payment needs to happen.
-
-A customer may be:
-
-* In an area with poor network coverage
-* Experiencing a temporary network outage
-* In a crowded location where cellular networks are congested
-* Shopping in a rural or underserved area
-* Temporarily without mobile data
-
-Normally, the options are simple:
-
-> **Wait for connectivity or don't complete the payment.**
-
-PAT explores a different approach.
+| | |
+|---|---|
+| Program ID (devnet) | `HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh` |
+| Stack | Solana, Rust, Anchor, ed25519 precompile, TypeScript |
+| Client | React PWA (in progress) |
+| Author | Hilda Enyioko |
 
 ---
 
-## How PAT Works
+## The problem
 
-PAT separates **payment authorization** from **blockchain settlement**.
+Payments assume the internet is always there. Coverage drops, networks congest, rural and underserved areas have patchy data, and people run out of data at the wrong moment. Today the options at the till are "wait" or "don't pay".
 
-### 1. Reserve
-
-While online, the user establishes a bounded offline spending allowance.
-
-For example:
-
-```text
-Wallet Balance:          10 SOL
-Offline Spending Limit:  1 SOL
-Reserved Allowance:      1 SOL
-```
-
-The allowance is secured on-chain before the user goes offline.
-
-### 2. Go Offline
-
-The user loses internet connectivity.
-
-Their wallet and PAT client can still access the previously established offline spending capacity.
-
-### 3. Spend
-
-The user creates and signs a payment from the reserved allowance.
-
-The signed transaction/payment data can be transferred to the merchant locally, for example through a QR code.
-
-```text
-Customer
-   │
-   │ Signed payment
-   ▼
-  QR Code
-   │
-   ▼
-Merchant
-```
-
-The merchant can verify that the payment belongs to the user's authorized offline spending capacity.
-
-### 4. Reconnect
-
-When internet connectivity returns, PAT automatically submits the pending transaction to Solana.
-
-```text
-Offline
-   │
-   ▼
-Signed
-   │
-   ▼
-Reserved
-   │
-   ▼
-Accepted Offline
-   │
-   │ Network returns
-   ▼
-Broadcast
-   │
-   ▼
-Confirmed
-```
-
-### 5. Settle
-
-The transaction is finally broadcast and confirmed on-chain.
-
-The merchant can distinguish between:
-
-**Offline Accepted**
-
-> The payment has been authorized against the user's reserved offline allowance.
-
-and:
-
-**Confirmed**
-
-> The payment has been settled on Solana.
-
-This distinction prevents PAT from claiming that an offline payment is already blockchain-confirmed when it is not.
+You cannot create an on-chain payment while offline. PAT's answer is to move the hard part earlier in time: create the **bounded offline spending allowance while connected**, then let the offline step be nothing more than a signature.
 
 ---
 
-## Why PAT?
-
-PAT is built around a simple idea:
-
-> **Connectivity should not have to determine whether a payment can happen.**
-
-The protocol explores a middle ground between two extremes:
-
-**Traditional online payment**
+## How it works
 
 ```text
-Create → Sign → Broadcast → Confirm
-                  ↑
-              Requires internet
+   ONLINE (payer)                OFFLINE (payer -> merchant)           ONLINE (merchant)
+ ┌──────────────────┐          ┌───────────────────────────┐        ┌───────────────────┐
+ │ reserve(capacity)│          │ sign PaymentIntent        │        │ settle(intent)    │
+ │ funds locked in  │  ──────► │ (no internet needed)      │ ─────► │ ed25519 verified  │
+ │ Reservation PDA  │          │ QR: intent + signature    │   QR   │ funds -> merchant │
+ └──────────────────┘          └───────────────────────────┘        └───────────────────┘
 ```
 
-**PAT**
+1. **Reserve (online).** The payer calls `reserve`, which moves `capacity + rent_reserve` lamports into a Reservation PDA. That account is the escrow itself.
+2. **Spend (offline).** The payer's wallet checks its local offline ledger, then signs a `PaymentIntent` naming the merchant, amount, reservation and expiry. The payload (166-byte body plus 64-byte signature, 327 characters as JSON/base64) is shown as a QR code.
+3. **Accept (merchant, possibly offline).** The merchant verifies the signature and bounds locally and shows **Offline Accepted**. This is a merchant-side trust decision, not a blockchain guarantee.
+4. **Settle (merchant online).** The merchant submits one transaction containing an ed25519 precompile instruction followed by PAT's `settle` instruction. The program verifies everything and creates a `Payment` account. **Existence of that account is Confirmed.**
 
-```text
-Reserve → Sign → Transfer → [Offline]
-                              │
-                         Connectivity
-                              │
-                              ▼
-                         Broadcast
-                              │
-                              ▼
-                           Confirm
-```
+The payer never has to reconnect for the merchant to get paid. The merchant is the bridge to the network.
 
-The key primitive is the **bounded offline spending allowance**.
+### Offline Accepted is not Confirmed
 
-The user does not receive unlimited permission to spend while offline. Their offline spending capacity is constrained by funds that were previously reserved on-chain.
+| State | Meaning | Who decides |
+|---|---|---|
+| **Offline Accepted** | Signature valid and intent within bounds, as far as the merchant can check without the chain | Merchant's risk decision |
+| **Confirmed** | The `settle` transaction landed and the `Payment` PDA exists | The chain |
+
+PAT never presents an offline payment as blockchain-confirmed before it is.
 
 ---
 
-## Core Architecture
+## Architecture
 
-PAT consists of three primary components.
+### Accounts
 
-### On-chain Program
+**Reservation** (PDA: `["reservation", owner, reservation_id.to_le_bytes()]`, 109 bytes)
+The bounded allowance and the escrow. It holds the lamports itself, with no separate vault. A system-owned vault could not be left with dust below its rent-exempt minimum, and `close = owner` refunds cleanly on withdraw.
 
-Built with **Anchor and Rust**, the Solana program manages the user's offline spending allowance and reservation state.
+**Payment** (PDA: `["payment", reservation, payment_id]`, 174 bytes)
+One per settled payment. It is the proof of Confirmed and the replay guard: a second `settle` with the same `payment_id` fails at account `init`. It outlives the Reservation, so a merchant can still prove payment after the payer withdraws.
 
-The reservation acts as a spending boundary that limits how much value can be committed through the offline payment flow.
+**PaymentIntent** is not an account. It is the signed message carried in the QR.
 
-### Client-side Queue
-
-The React PWA maintains pending payments locally using browser storage.
-
-When a payment is created offline, the client stores the required transaction data and tracks its state until connectivity becomes available.
-
-### Settlement State Machine
-
-PAT exposes the lifecycle of each payment:
+### Reservation phases (derived from the clock, never stored)
 
 ```text
-SIGNED
-   ↓
-RESERVED
-   ↓
-OFFLINE_ACCEPTED
-   ↓
-BROADCAST
-   ↓
-CONFIRMED
+ Active                  Expiring                       Releasable
+ now < expires_at        expires_at <= now <=           now > settle_deadline
+                         settle_deadline
+ new intents OK          no new intents                 settle rejected
+ settle OK               settle OK (already accepted)   owner may withdraw
 ```
 
-This allows both the application and merchant interface to clearly communicate where a payment currently stands.
+`settle_deadline = expires_at + 30 min grace`. There is deliberately **no early close**: letting the owner shorten the window would let them withdraw before an offline merchant reconnects. Funds stay locked until `settle_deadline`. At the single second `now == settle_deadline`, neither settle-after nor withdraw succeeds, which is intentional and tested.
+
+### Instructions
+
+| Instruction | Who | What it does |
+|---|---|---|
+| `reserve(reservation_id, capacity, per_payment_cap, expires_at, max_payments)` | Payer | Locks `capacity + rent_reserve`. `rent_reserve = max_payments * rent(Payment)`, which prepays receipt rent and caps receipts per reservation |
+| `settle(intent)` | Anyone (merchant or relayer) | Verifies the signed intent and pays the merchant. Funds can only go to `intent.merchant` |
+| `withdraw` | Owner only | After `settle_deadline`, closes the Reservation and refunds unspent capacity, unused rent reserve and account rent |
+
+`settle` checks, in order:
+
+1. The ed25519 precompile instruction sits immediately before `settle`, and its pubkey and message bytes match the intent exactly (read from the instructions sysvar, which is pinned to its real address).
+2. The signer equals `intent.payer`.
+3. `reservation.owner == intent.payer` and `intent.reservation` is the reservation account passed in.
+4. The Payment PDA seeds include the reservation.
+5. The payment is not already settled (`init` fails if the PDA exists).
+6. Window: `now <= settle_deadline`, `intent.expires_at <= reservation.expires_at`, `created_at <= expires_at`, `created_at >= reservation.created_at`, cluster and version match.
+7. Capacity: `committed + amount <= capacity`, `amount <= per_payment_cap`, and the rent reserve covers the Payment account.
+
+The settler fronts the Payment account rent and is reimbursed from `rent_reserve`. That is how "the payer pays the rent" works while the payer is offline. In the devnet run the net cost to the relayer is zero.
+
+**Lamport invariant**, checked after `reserve` and after every `settle`:
+
+```text
+reservation.lamports >= rent_exempt_min(Reservation) + (capacity - committed) + rent_reserve
+```
+
+Tests assert this as an equality after every settle.
+
+### PaymentIntent wire format
+
+Signed bytes are `"PAT-INTENT-v1" (13 bytes) || borsh(PaymentIntent)`, 179 bytes in total. The 64-byte ed25519 signature travels beside it off-chain. **Field order is part of the format.**
+
+| Field | Type | Notes |
+|---|---|---|
+| version | u8 | currently 1 |
+| cluster | u8 | 0 localnet, 1 devnet, 2 mainnet-beta; compared to a constant compiled into the program |
+| payment_id | [u8; 32] | random; part of the Payment PDA seeds |
+| payer | Pubkey | |
+| merchant | Pubkey | |
+| reservation | Pubkey | |
+| amount | u64 | lamports |
+| created_at | i64 | payer-declared |
+| expires_at | i64 | acceptance deadline, enforced by the merchant app; must be `<= reservation.expires_at` |
+| sequence | u32 | from the offline ledger; stored on Payment, not order-enforced |
+| committed_after | u64 | payer's claimed running total; sanity-checked against capacity |
+
+A Rust golden vector and a TypeScript encoder are tested for byte-for-byte parity.
+
+### Offline ledger (client)
+
+The wallet measures `available_offline_balance` and refuses to sign anything above it:
+
+```text
+available_offline = capacity - committed_on_chain - sum(pending intents)
+```
+
+Rules:
+
+1. **Write-ahead.** The debit is persisted *before* a signature exists.
+2. **Pending counts** until resolved.
+3. **Credit back only on proof.** A pending intent is dropped only when its Payment PDA exists, or when `now > settle_deadline` with no PDA. Never earlier.
+4. **Fail closed.** No initialized ledger (fresh install, restored wallet, second device) means refuse to sign offline.
+5. **Reconcile** with a single `getMultipleAccounts` read so committed and receipts come from the same slot.
+
+The signing gate also checks `amount > 0`, `amount <= per_payment_cap`, and `now < expires_at`.
+
+### Payment lifecycle (off-chain, tracked on both devices)
+
+```text
+SIGNED ──► OFFLINE_ACCEPTED ──► SETTLING ──► CONFIRMED
+   │              │
+   └──────────────┴──► EXPIRED (acceptance window or settle_deadline passed)
+                  └──► REJECTED (bad signature, duplicate, over capacity, over cap)
+```
+
+| State | Where | Meaning |
+|---|---|---|
+| SIGNED | Customer app | Debited in the local ledger, signature produced |
+| OFFLINE_ACCEPTED | Merchant app | Merchant verified locally |
+| SETTLING | Merchant app | `settle` transaction submitted |
+| CONFIRMED | Both | Payment PDA exists |
+
+The earlier BROADCAST and RESERVED states were retired, because it is the merchant, not the customer, who submits.
 
 ---
 
-## Offline Payment Example
+## Design history and lessons
 
-Suppose a user has:
+PAT's design changed substantially during the build. The reasons are as much a part of the project as the final design.
 
-```text
-Wallet balance:       10 SOL
-Offline allowance:     1 SOL
-```
+### v0: durable-nonce transactions (spiked, then abandoned)
 
-The user goes offline.
+The first idea was for the customer to sign a normal Solana transaction using a **durable nonce**, so it would stay valid indefinitely, and for the merchant to broadcast it later.
 
-They purchase something worth:
+The spike worked: a signed transaction survived more than 7 minutes and landed after an ordinary blockhash would have expired. The spike script is kept in the repo as a working fallback.
 
-```text
-0.25 SOL
-```
+### Why it was abandoned: the void attack
 
-PAT can commit that payment against the previously reserved allowance.
+A durable-nonce transaction must begin with `nonceAdvance`, signed by the nonce authority at the top level. A PDA cannot sign a top-level transaction, so the authority has to be a keypair, effectively the customer's. After paying offline, the customer could simply advance the nonce and **void the merchant's signed transaction**.
 
-The remaining offline capacity becomes:
+> **Lesson:** a transaction being validly signed does not make the authorization it represents safe to hold offline.
 
-```text
-1.00 SOL
--0.25 SOL
-─────────
-0.75 SOL
-```
+### v1: reservation plus signed PaymentIntent (current)
 
-The merchant receives the payment locally and sees:
+The offline artifact is now a **signed financial authorization**, not a stale transaction. The merchant builds a fresh transaction later, containing an ed25519 precompile instruction plus `settle`. There is no nonce for the customer to advance. The customer's only way out is `withdraw`, which is blocked until `settle_deadline`.
 
-> **Payment accepted offline**
+### Other decisions and their reasons
 
-Once the user reconnects, PAT broadcasts the transaction and the merchant eventually sees:
-
-> **Payment confirmed**
+- **Reservation is the escrow** (no separate vault), for clean refunds and no rent-dust problem.
+- **One Payment account per payment**, not a list inside the Reservation, so there is no growing account, the replay guard is a plain `init`, and merchant proof outlives the payer's withdrawal.
+- **No early close**, so an offline merchant always has the full grace window.
+- **Rent prepaid via `max_payments`**, so receipt spam cannot drain the reservation.
+- **Cluster field plus domain tag**, because PDA addresses repeat across clusters. The program cannot read the genesis hash, so a compiled-in constant is the only on-chain option.
+- **`created_at >= reservation.created_at`**, so a stale intent cannot be settled against a re-created reservation at the same address.
+- **`has_one = owner` on `withdraw`.** The reservation seeds use the stored owner, not the signer, so the seeds alone prove nothing about who is calling. Without `has_one`, anyone could sign and send the refund to themselves via `close = owner`.
+- **Time from the chain in scripts.** The program uses `Clock::get()`. A locally timestamped intent from a PC whose clock is a few seconds slow can fail the `created_at` check. A real offline wallet only has its local clock, which is one reason `created_at` is treated as untrusted (see below).
 
 ---
 
-## Security Model
+## Security model and honest limits
 
-PAT is designed around **bounded trust rather than unlimited offline spending**.
+**What the reservation guarantees:** the funds exist, are locked, and cannot be withdrawn by the owner before `settle_deadline`. A valid, in-bounds intent can always be settled in that window. Failures are safe for the chain.
 
-The offline allowance provides a predefined spending boundary.
+**What it does not guarantee:**
 
-This means the system does not simply rely on:
+- **Deliberate double-issuance.** A payer holding their own key can sign 0.7 SOL to merchant A and 0.7 SOL to merchant B against a 1 SOL reservation, offline. Whoever settles second is rejected with `InsufficientCapacity`, and **that merchant bears the loss**. The offline ledger only prevents *accidental* overspend (stale UI, retries, reinstall, second device). A modified wallet can bypass it.
+- **Backdating.** `created_at` is declared by the payer. Offline merchants must rely on their own clock to reject stale intents.
+- **Offline Accepted is a risk decision.** Merchants should apply their own limits to offline acceptance.
 
-> "The user says they will pay later."
+**Mitigations in the design:** `per_payment_cap`, short reservation windows, merchant-side offline limits, the honest-wallet ledger, and (planned) equivocation bond-and-slash using the stored `sequence`, plus optionally a hardware-enforced counter.
 
-Instead, PAT attempts to establish spending capacity before connectivity is lost and then constrain offline payments to that capacity.
+**Note on the "10% of online balance" idea:** any such rule is a client policy and risk limit only. The security boundary is the actual funds locked in the reservation.
 
-The prototype is intended to explore this model and should undergo additional security review before handling real-value transactions.
+> PAT's wallet tracks an offline balance and refuses to sign payments above it. This prevents accidental overspending. Because the payer holds their own key, a deliberate double-issue by a modified wallet remains possible. PAT bounds the exposure with per-payment caps and reservation limits, and plans equivocation penalties.
 
----
-
-## Tech Stack
-
-### Blockchain
-
-* **Solana**
-* **Rust**
-* **Anchor**
-* **Durable Nonce Accounts**
-
-### Client
-
-* **React**
-* **TypeScript**
-* **Progressive Web App (PWA)**
-* **@solana/web3.js**
-* **Solana Wallet Adapter**
-
-### Local Storage
-
-* **IndexedDB**
-* **localForage**
-
-### Offline Transfer
-
-* **QR code generation**
-* **QR code scanning**
-
-### Development
-
-* **Solana CLI**
-* **Anchor CLI**
-* **Solana Devnet / Localnet**
-* **Git / GitHub**
+Signature verification (the ed25519 precompile plus instructions-sysvar byte matching) is where most bugs live in designs like this. It needs dedicated negative tests (wrong signer, tampered amount, wrong message, precompile not immediately before `settle`) before any real-value use.
 
 ---
 
-## Project Structure
+## Devnet proof
+
+A live end-to-end run on Solana devnet using three distinct parties (funder, customer, merchant), executed by `scripts/e2e-devnet.ts`:
+
+| Step | Result |
+|---|---|
+| Program | `HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh` |
+| Customer | `DR8bVZfdReYnaKDBLpCFvDJEp323Xu23YzLJBqTQxpbB` |
+| Merchant | `AUkgqP48sWMhTBLFiXrHNMroy52iM59LD5rGcW11vR3V` |
+| Reserve | 0.1 SOL capacity, reservation `AcygezR7X9hvseyaEftyUaPTvFux6WoVWHNWtuYf9mwJ` |
+| Offline signing | 0.02 SOL intent; QR payload 327 chars (166 + 64 raw bytes); ledger available dropped 0.10 to 0.08 SOL before any signature left the device |
+| Gate check | Oversized payment refused with `OVER_PER_PAYMENT_CAP` |
+| Merchant local verify | State: Offline Accepted |
+| Settle tx | `5Co6wqB28nEQsyDoXtqeVkE9uFgBiShZ4wBQ4LbF7jjQ88NJhQTAetctb7e5HZSRgSPNfDTjU4uL4a926qBCGQ9n` |
+| **Confirmed** | Payment PDA [`Av2Bd6Qnij7FihcZWU7124djPojSu9yDBuuJxJ5ZCdtA`](https://explorer.solana.com/address/Av2Bd6Qnij7FihcZWU7124djPojSu9yDBuuJxJ5ZCdtA?cluster=devnet), settled slot 506409896 |
+| Merchant net | +0.019990 SOL (0.02 SOL minus the transaction fee) |
+| Ledger after reconcile | Pending 0, available 0.08 SOL |
+
+---
+
+## Testing
+
+| Layer | What it covers |
+|---|---|
+| Rust unit tests (`state.rs`, no validator) | Pinned account sizes (101/109 and 166/174), phase boundaries at exact seconds, settle checks, oversubscription (0.7 then 0.7 against 1 SOL rejects the second and leaves state unchanged), overflow safety, intent validation branches, reserve parameter bounds, signing-bytes layout, borsh round-trip, golden vector |
+| TypeScript parity test | The TS encoder produces byte-identical output to the Rust golden vector |
+| Bankrun tests (`tests/withdraw.bankrun.ts`, in-process, controllable clock) | Withdraw blocked until strictly after `settle_deadline` (including exactly at it), owner-only withdraw, lamport invariant as an equality after reserve and every settle, rejected settle changes nothing, replay of the same `payment_id` rejected, partial-spend refund, Payment records outlive the Reservation, settle rejected after the deadline |
+| Devnet e2e script | The full reserve, offline sign, local verify, settle, confirm, reconcile flow shown above |
+
+---
+
+## Repository layout
 
 ```text
 pat/
-├── programs/
-│   └── pat/
-│       └── src/
-│           └── lib.rs
-│
-├── app/
-│   └── ...
-│
-├── tests/
-│   └── ...
-│
+├── programs/pat/src/
+│   ├── lib.rs               # program entrypoints
+│   ├── constants.rs         # seeds, CLUSTER_ID, INTENT_DOMAIN, grace period
+│   ├── error.rs             # PatError
+│   ├── state.rs             # Reservation, Payment, PaymentIntent (+ unit tests)
+│   ├── ed25519.rs           # precompile / instructions-sysvar verification
+│   └── instructions/        # reserve.rs, settle.rs, withdraw.rs
+├── tests/                   # intent-encoding.ts (parity), withdraw.bankrun.ts
+├── scripts/e2e-devnet.ts    # CLI end-to-end on devnet
+├── app/                     # React PWA (in progress)
 ├── Anchor.toml
-├── Cargo.toml
 └── README.md
 ```
 
 ---
 
-## Who Built PAT?
+## Running it
 
-**Hilda Enyioko**
+```bash
+# Rust unit tests (no validator)
+cargo test -p pat -- --nocapture
 
-Backend / Full-Stack Engineer focused on payment systems, financial infrastructure, and distributed systems.
+# TypeScript byte-parity test
+npx ts-mocha -p ./tsconfig.json -t 1000000 tests/intent-encoding.ts
 
-Hilda has worked across fintech, payment integrations, backend systems, and blockchain development, with experience using technologies including TypeScript, Python, Django, NestJS, PostgreSQL, Redis, Paystack, Interswitch, Solana, and Anchor.
+# Build, then time-travel tests in Bankrun
+anchor build
+npx ts-mocha -p ./tsconfig.json -t 1000000 tests/withdraw.bankrun.ts
 
-PAT was created to explore how blockchain payment infrastructure can remain useful when one of the assumptions it normally depends on, **continuous connectivity**, temporarily disappears.
+# End-to-end on devnet (needs a funded CLI wallet; keys persist in .pat-demo/, git-ignored)
+npx ts-node scripts/e2e-devnet.ts
+```
 
----
-
-## Project Status
-
-🚧 **Prototype / Hackathon Project**
-
-PAT is an experimental project exploring offline-friendly, self-custodial payments on Solana.
-
-The current implementation is intended for demonstration and research rather than production financial use.
-
----
-
-## Project Resources
-
-### 🎥 Pitch Video
-
-Coming soon.
-
-**Dummy link:**
-`https://example.com/pat-pitch`
-
-A short explanation of the problem, the PAT protocol, and the reservation-based offline payment model.
-
-### 🌐 Live Demo
-
-Coming soon.
-
-**Dummy link:**
-`https://pat-demo.example.com`
-
-### 🎬 Demo Video
-
-Coming soon.
-
-**Dummy link:**
-`https://example.com/pat-demo`
-
-The demo will show:
-
-1. Establishing an offline spending allowance
-2. Losing connectivity
-3. Creating and signing a payment
-4. Transferring the payment to a merchant
-5. Showing the **Offline Accepted** state
-6. Restoring connectivity
-7. Broadcasting the transaction
-8. Showing the final **Confirmed** state
-9. Demonstrating the offline spending limit
+Notes: keep the project on the Linux filesystem under WSL2 (building on `/mnt/c` was roughly 10x slower and prevented `solana-test-validator` from starting). The cluster is compiled into the program via `CLUSTER_ID`, so deploying to another cluster means changing that constant and rebuilding.
 
 ---
 
-## The Idea
+## Roadmap
 
-PAT is built around one simple principle:
+**Hackathon scope (in progress)**
 
-> **Reserve while connected. Spend while disconnected. Settle when reconnected.**
+- [x] Accounts, wire format, golden vector, parity test
+- [x] `reserve`, `settle` (ed25519 verification), `withdraw`
+- [x] Bankrun time-based and invariant tests
+- [x] Devnet deploy and end-to-end CLI run
+- [ ] React PWA: wallet adapter, reserve UI, offline ledger in IndexedDB (localForage)
+- [ ] Offline signing and QR generation (real-size payload tested)
+- [ ] Merchant page: scan QR, verify locally, show Offline Accepted, settle when online
+- [ ] Failure-case UX: replayed intent, over cap, over offline balance, expired intent, after `settle_deadline`, wrong cluster
+- [ ] Negative signature tests (wrong signer, tampered amount, precompile not adjacent)
 
-The goal is not to replace online payments.
+**Beyond the hackathon**
 
-It is to make temporary loss of connectivity **less capable of stopping a payment altogether**.
+- SPL token support (USDC), by adding a mint to the Reservation and a token vault
+- Equivocation bond-and-slash using `sequence`
+- Hardware-backed offline signer (secure element); P-256 via the secp256r1 precompile, subject to checking its current status
+- `close_payment` to return Payment rent after a retention period
+- Reverse payments (a `Reversed` status is reserved in the enum)
+- Independent security review
+- A research write-up of the protocol
+
+---
+
+## Related work and novelty
+
+PAT is not the first offline payment idea, and does not claim to be. Prior and adjacent work includes offline CBDC and e-money designs (online value reservation, offline signed IOUs, later reconciliation), Chaum-style offline eCash, Solana's own support for signing transactions offline and broadcasting later, escrow-plus-signed-voucher payment channels, and recent Solana prototypes such as Mora that lock funds in escrow and settle offline-signed vouchers.
+
+PAT's specific contribution is the combination: a payer pre-funds a generic on-chain reservation, then while fully offline signs a **merchant-specific** authorization against it, which an **online merchant settles directly** on-chain, with a reservation window, per-payment cap, replay guard, oversubscription handling, and a fail-closed offline ledger, packaged for intermittent connectivity. The merchant-online path matters: the payer's phone never needs to reconnect.
+
+---
+
+## Project resources
+
+- Pitch video: *coming soon* (placeholder: `https://example.com/pat-pitch`)
+- Live demo: *coming soon* (placeholder: `https://pat-demo.example.com`)
+- Demo video: *coming soon* (placeholder: `https://example.com/pat-demo`)
+
+The demo will show: reserving an allowance, going offline, signing a payment, handing the QR to a merchant, the **Offline Accepted** state, the merchant settling on-chain, the **Confirmed** state, and the offline-balance gate refusing an overspend.
+
+---
+
+## About
+
+Built by **Hilda Enyioko**, a backend-leaning software engineer working across fintech, payment integrations and distributed systems (TypeScript, Python, Django, NestJS, PostgreSQL, Redis, Paystack, Interswitch), and PAT is her first Solana project. PAT explores how blockchain payments can stay useful when an assumption they normally depend on, continuous connectivity, temporarily disappears.
+
+> The goal is not to replace online payments. It is to make a temporary loss of connectivity less capable of stopping a payment altogether.
