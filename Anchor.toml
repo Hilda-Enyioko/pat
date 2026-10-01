@@ -6,11 +6,11 @@ skip_local_validator = true
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-pat = "HpSkCuHays9S7gAVs45BcU6t2gjjeE6dEdy3TwyqcwB8"
+[programs.devnet]
+pat = "HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
