@@ -4,6 +4,7 @@ pub mod constants;
 pub mod error;
 pub mod instructions;
 pub mod state;
+pub mod ed25519;
 
 pub use constants::*;
 pub use state::*;
@@ -33,4 +34,9 @@ pub mod pat {
             max_payments,
         )
     }
+
+    pub fn settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> {
+        instructions::settle::handle_settle(ctx, intent)
+    }
+
 }

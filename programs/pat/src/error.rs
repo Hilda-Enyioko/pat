@@ -42,4 +42,6 @@ pub enum PatError {
     InvalidMaxPayments,
     #[msg("Reservation lamport invariant violated")]
     LamportInvariantBroken,
+    #[msg("Merchant account does not match the intent")]
+    MerchantMismatch,
 }
