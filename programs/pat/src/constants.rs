@@ -22,3 +22,6 @@ pub const INTENT_VERSION: u8 = 1;
 
 /// Time after `expires_at` during which accepted intents can still settle.
 pub const SETTLE_GRACE_SECS: i64 = 30 * 60;
+
+// Prototype guard: bounds the rent_reserve a single reservation can demand.
+pub const MAX_PAYMENTS_PER_RESERVATION: u32 = 1_000;

@@ -30,4 +30,16 @@ pub enum PatError {
     WithdrawTooEarly,
     #[msg("Arithmetic overflow")]
     Overflow,
+
+    // -- Reserve Errors
+    #[msg("Capacity must be greater than zero")]
+    InvalidCapacity,
+    #[msg("Per-payment cap must be > 0 and <= capacity")]
+    InvalidPerPaymentCap,
+    #[msg("Reservation expiry must be in the future")]
+    InvalidReservationWindow,
+    #[msg("max_payments must be between 1 and the program limit")]
+    InvalidMaxPayments,
+    #[msg("Reservation lamport invariant violated")]
+    LamportInvariantBroken,
 }

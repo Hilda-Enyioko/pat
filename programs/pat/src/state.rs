@@ -80,6 +80,40 @@ impl Reservation {
         self.payments_settled = new_count;
         Ok(())
     }
+
+    pub fn validate_params(
+        capacity: u64,
+        per_payment_cap: u64,
+        expires_at: i64,
+        max_payments: u32,
+        now: i64,
+    ) -> Result<()> {
+        require!(capacity > 0, PatError::InvalidCapacity);
+        require!(
+            per_payment_cap > 0 && per_payment_cap <= capacity,
+            PatError::InvalidPerPaymentCap
+        );
+        require!(expires_at > now, PatError::InvalidReservationWindow);
+        require!(
+            max_payments > 0 && max_payments <= MAX_PAYMENTS_PER_RESERVATION,
+            PatError::InvalidMaxPayments
+        );
+        Ok(())
+    }
+
+    /// rent_reserve = max_payments * rent_exempt_min(Payment::SPACE)
+    pub fn rent_reserve_for(max_payments: u32, payment_rent: u64) -> Result<u64> {
+        payment_rent
+            .checked_mul(max_payments as u64)
+            .ok_or(error!(PatError::Overflow))
+    }
+
+    /// settle_deadline = expires_at + SETTLE_GRACE_SECS
+    pub fn deadline_for(expires_at: i64) -> Result<i64> {
+        expires_at
+            .checked_add(SETTLE_GRACE_SECS)
+            .ok_or(error!(PatError::Overflow))
+    }
 }
 
 // ───────────────────────── Payment ─────────────────────────
@@ -351,5 +385,67 @@ mod tests {
         };
         let hex: String = i.signing_bytes().iter().map(|b| format!("{:02x}", b)).collect();
         println!("GOLDEN_INTENT_HEX={}", hex);
+    }
+}
+
+
+#[cfg(test)]
+mod reserve_param_tests {
+    use super::*;
+
+    fn code(r: Result<()>) -> Option<u32> {
+        match r {
+            Err(Error::AnchorError(e)) => Some(e.error_code_number),
+            _ => None,
+        }
+    }
+    fn c(e: PatError) -> Option<u32> { Some(u32::from(e)) }
+
+    const NOW: i64 = 1_700_000_000;
+
+    #[test]
+    fn valid_params_pass() {
+        assert!(Reservation::validate_params(1_000, 250, NOW + 86_400, 10, NOW).is_ok());
+        // per_payment_cap == capacity is allowed
+        assert!(Reservation::validate_params(1_000, 1_000, NOW + 1, 1, NOW).is_ok());
+    }
+
+    #[test]
+    fn zero_capacity_rejected() {
+        assert_eq!(code(Reservation::validate_params(0, 0, NOW + 10, 1, NOW)), c(PatError::InvalidCapacity));
+    }
+
+    #[test]
+    fn per_payment_cap_bounds() {
+        assert_eq!(code(Reservation::validate_params(1_000, 0, NOW + 10, 1, NOW)), c(PatError::InvalidPerPaymentCap));
+        assert_eq!(code(Reservation::validate_params(1_000, 1_001, NOW + 10, 1, NOW)), c(PatError::InvalidPerPaymentCap));
+    }
+
+    #[test]
+    fn expiry_must_be_strictly_future() {
+        assert_eq!(code(Reservation::validate_params(1_000, 100, NOW, 1, NOW)), c(PatError::InvalidReservationWindow));
+        assert_eq!(code(Reservation::validate_params(1_000, 100, NOW - 1, 1, NOW)), c(PatError::InvalidReservationWindow));
+    }
+
+    #[test]
+    fn max_payments_bounds() {
+        assert_eq!(code(Reservation::validate_params(1_000, 100, NOW + 10, 0, NOW)), c(PatError::InvalidMaxPayments));
+        assert_eq!(
+            code(Reservation::validate_params(1_000, 100, NOW + 10, MAX_PAYMENTS_PER_RESERVATION + 1, NOW)),
+            c(PatError::InvalidMaxPayments)
+        );
+        assert!(Reservation::validate_params(1_000, 100, NOW + 10, MAX_PAYMENTS_PER_RESERVATION, NOW).is_ok());
+    }
+
+    #[test]
+    fn rent_reserve_math_and_overflow() {
+        assert_eq!(Reservation::rent_reserve_for(10, 1_000).unwrap(), 10_000);
+        assert!(Reservation::rent_reserve_for(2, u64::MAX).is_err());
+    }
+
+    #[test]
+    fn deadline_adds_grace_and_guards_overflow() {
+        assert_eq!(Reservation::deadline_for(NOW).unwrap(), NOW + SETTLE_GRACE_SECS);
+        assert!(Reservation::deadline_for(i64::MAX).is_err());
     }
 }
