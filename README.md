@@ -1,6 +1,6 @@
 # PAT: Primitive Airborne Transaction
 
-**Reserve while connected. Spend while disconnected. Settle when reconnected.**
+**Reserve online. Pay offline. Settle through the merchant.**
 
 PAT is a self-custodial payment protocol on Solana for temporary connectivity loss. A payer locks a bounded spending allowance on-chain while online. Later, with no internet at all, the payer signs a payment authorization against that allowance and hands it to a merchant locally (for example as a QR code). The merchant, who only needs connectivity on their own side, submits it to the PAT program, which verifies the signature and moves funds from the reservation to the merchant.
 
