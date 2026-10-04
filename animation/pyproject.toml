@@ -1,0 +1,28 @@
+[project]
+name = "animation"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Hilda-Enyioko", email = "enyiokohilda@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "manim>=0.21.0",
+]
+
+[project.scripts]
+animation = "animation:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+# 1. Silence Pylance / Pyright diagnostics
+[tool.pyright]
+include = ["."]
+ignore = ["**/*"]
+
+# 2. Silence Pylint checks
+[tool.pylint.main]
+ignore-paths = [".*"]

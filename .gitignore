@@ -7,3 +7,14 @@ test-ledger
 .yarn
 .surfpool
 .pat-demo/
+.venv/
+__pycache__/
+.python-version
+.vscode/
+
+# Manim render output and video pipeline artifacts
+animation/media/
+animation/vo/
+animation/clips.txt
+animation/*.mp4
+animation/*.wav
