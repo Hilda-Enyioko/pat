@@ -18,3 +18,7 @@ animation/vo/
 animation/clips.txt
 animation/*.mp4
 animation/*.wav
+
+# PWA App
+app/node_modules
+app/dist
