@@ -22,3 +22,5 @@ animation/*.wav
 # PWA App
 app/node_modules
 app/dist
+
+.env
