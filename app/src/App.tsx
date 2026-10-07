@@ -1,3 +1,4 @@
+import "./App.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
