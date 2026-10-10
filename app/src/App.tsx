@@ -11,7 +11,13 @@ import { shortKey } from "./lib/format";
 import { useOnline } from "./hooks/useOnline";
 import { CLUSTER, RPC_URL } from "./config";
 
-const logoUrl = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Beige%20and%20Black%20Elegant%20Wedding%20Boutique%20Logo%20%282%29-rnXAc0f8amlVTv0SYzi0nUMWJ76Z6U.png";
+const logoUrl = "/logo.png";
+
+function useOfflineReady() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => { const onReady = () => setReady(true); window.addEventListener("pat:offline-ready", onReady); return () => window.removeEventListener("pat:offline-ready", onReady); }, []);
+  return ready;
+}
 type View = "landing" | "connect" | "reserve" | "ledger" | "sign" | "merchant";
 const hashViews: View[] = ["reserve", "ledger", "sign", "merchant"];
 function Arrow() { return <span aria-hidden="true">↗</span>; }
@@ -30,7 +36,7 @@ function Landing({ onStart }: { onStart: () => void }) { return <main className=
 
 function Connect() { return <main className="centered-page"><section className="connect-card"><div className="step-count">STEP 1 / 3</div><h1>Connect your wallet.</h1><p className="muted">PAT never takes custody of your funds. Connect the wallet you&apos;ll use to reserve an offline allowance.</p><div className="wallet-panel"><div className="wallet-icon">◎</div><div><strong>Your Solana wallet</strong><span>Solflare, Phantom, or another installed wallet</span></div><WalletMultiButton /></div><WalletGate /><div className="security-note"><span>⌁</span><p>Non-custodial by default. PAT only signs instructions you approve.</p></div></section></main>; }
 function AppContent() {
-  const { publicKey, disconnect } = useWallet(); const online = useOnline();
+  const { publicKey, disconnect } = useWallet(); const online = useOnline(); const offlineReady = useOfflineReady();
   const [view, setViewState] = useState<View>(() => { const candidate = window.location.hash.replace("#/", "") as View; return hashViews.includes(candidate) ? candidate : "landing"; });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
   const setView = useCallback((next: View) => { setViewState(next); if (next === "landing" || next === "connect") window.history.replaceState(null, "", window.location.pathname); else window.history.replaceState(null, "", `#/${next}`); }, []);
@@ -47,7 +53,7 @@ function AppContent() {
   else if (guardedView === "ledger") content = <main className="workspace page-shell"><div className="workspace-heading"><div><p className="eyebrow">Your offline ledger</p><h1>Know what you can spend.</h1><p className="muted">Your ledger is persisted on this device and fails closed when it cannot verify your allowance.</p></div><button className="primary-button" onClick={() => setView("reserve")}>Reserve funds <Arrow /></button></div>{ledgers.length === 0 ? <div className="empty-state"><h2>Your ledger is waiting.</h2><p>Create your first reservation to see your available offline balance here.</p><button className="primary-button" onClick={() => setView("reserve")}>Create reservation <Arrow /></button></div> : ledgers.map((ledger) => <LedgerPanel key={ledger.reservation} ledger={ledger} online={online} onChange={() => void reload()} />)}</main>;
   else if (guardedView === "sign") content = <SignPayment ledgers={ledgers} />;
   else content = <MerchantSettlement />;
-  return <div className="app-shell"><Nav view={guardedView} setView={setView} onDisconnect={disconnectWallet} publicKey={publicKey?.toBase58() ?? null} online={online} />{content}<footer className="site-footer"><span>{CLUSTER} · {new URL(RPC_URL).host}</span></footer></div>;
+  return <div className="app-shell"><Nav view={guardedView} setView={setView} onDisconnect={disconnectWallet} publicKey={publicKey?.toBase58() ?? null} online={online} />{offlineReady && <div className="offline-ready" role="status">Offline payments ready on this device</div>}{content}<footer className="site-footer"><span>{CLUSTER} · {new URL(RPC_URL).host}</span></footer></div>;
 }
 export default function App() { return <Providers><AppContent /></Providers>; }
 export { logoUrl };
