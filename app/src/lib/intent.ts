@@ -5,6 +5,7 @@ import { u32le, u64le, i64le } from "./pat";
 export const INTENT_DOMAIN = new TextEncoder().encode("PAT-INTENT-v1");
 export const INTENT_VERSION = 1;
 export const DEVNET_CLUSTER_ID = 1;
+export const TODO_EXPECTED_HEX = "TODO_EXPECTED_HEX_FROM_RUST_TEST";
 
 export interface PaymentIntent {
   version: number;
