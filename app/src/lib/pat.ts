@@ -4,7 +4,6 @@ import { PROGRAM_ID } from "../config";
 
 const te = new TextEncoder();
 
-// Must match programs/pat/src/constants.rs and state.rs
 export const RESERVATION_SEED = te.encode("reservation");
 export const PAYMENT_SEED = te.encode("payment");
 export const RESERVATION_SPACE = 109;
