@@ -30,8 +30,8 @@ function useOfflineReady() {
   return ready;
 }
 
-type View = "landing" | "connect" | "reserve" | "ledger" | "sign" | "merchant";
-const hashViews: View[] = ["reserve", "ledger", "sign", "merchant"];
+type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
+const hashViews: View[] = ["ledger", "reserve", "sign", "merchant"];
 
 function Arrow() {
   return <span aria-hidden="true">↗</span>;
@@ -80,16 +80,16 @@ function Nav({
       </button>
       <nav className="nav-links" aria-label="Primary navigation">
         <button
-          className={view === "reserve" ? "active" : ""}
-          onClick={() => setView("reserve")}
-        >
-          Reserve funds
-        </button>
-        <button
           className={view === "ledger" ? "active" : ""}
           onClick={() => setView("ledger")}
         >
           Ledger
+        </button>
+        <button
+          className={view === "reserve" ? "active" : ""}
+          onClick={() => setView("reserve")}
+        >
+          Reserve Funds
         </button>
         <button
           className={view === "sign" ? "active" : ""}
@@ -316,28 +316,6 @@ function AppContent() {
     );
   } else if (guardedView === "connect") {
     content = <Connect />;
-  } else if (guardedView === "reserve") {
-    content = (
-      <main className="workspace page-shell">
-        <div className="workspace-heading">
-          <div>
-            <p className="eyebrow">Step 2 / 3</p>
-            <h1>Reserve your offline funds.</h1>
-            <p className="muted">
-              Lock a bounded allowance while connected. Unspent funds return after
-              the settle window.
-            </p>
-          </div>
-          <span className="online-badge">● {online ? "Online" : "Offline"}</span>
-        </div>
-        <ReserveForm
-          onCreated={() => {
-            void reload();
-            setView("ledger");
-          }}
-        />
-      </main>
-    );
   } else if (guardedView === "ledger") {
     content = (
       <main className="workspace page-shell">
@@ -375,6 +353,28 @@ function AppContent() {
             />
           ))
         )}
+      </main>
+    );
+  } else if (guardedView === "reserve") {
+    content = (
+      <main className="workspace page-shell">
+        <div className="workspace-heading">
+          <div>
+            <p className="eyebrow">Step 2 / 3</p>
+            <h1>Reserve your offline funds.</h1>
+            <p className="muted">
+              Lock a bounded allowance while connected. Unspent funds return after
+              the settle window.
+            </p>
+          </div>
+          <span className="online-badge">● {online ? "Online" : "Offline"}</span>
+        </div>
+        <ReserveForm
+          onCreated={() => {
+            void reload();
+            setView("ledger");
+          }}
+        />
       </main>
     );
   } else if (guardedView === "sign") {
