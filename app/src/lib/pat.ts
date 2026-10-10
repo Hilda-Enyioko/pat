@@ -73,6 +73,19 @@ export async function buildReserveIx(p: ReserveParams) {
   return { ix, reservation };
 }
 
+// ---------- withdraw ----------
+export async function buildWithdrawIx(reservation: PublicKey, owner: PublicKey) {
+  const data = await discriminator("global:withdraw");
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: reservation, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
 // ---------- Reservation account ----------
 export interface ReservationAccount {
   owner: PublicKey;

@@ -1,141 +1,35 @@
 import localforage from "localforage";
+import type { Connection } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import type { ReservationAccount } from "./pat";
+import { fetchReservation, PAYMENT_SEED } from "./pat";
+import { PROGRAM_ID } from "../config";
 
 const store = localforage.createInstance({ name: "pat", storeName: "ledgers" });
-
-// Lamport amounts are persisted as decimal strings: BigInt is not JSON-safe, and
-// localForage can fall back to localStorage, which would throw on a BigInt.
-export interface PendingIntent {
-  paymentId: string; // hex
-  amount: string;
-  sequence: number;
-  signedAt: number;  // unix seconds
-}
-
-export interface OfflineLedger {
-  reservation: string; // base58 address, also the storage key
-  owner: string;
-  capacity: string;
-  perPaymentCap: string;
-  committedOnChain: string;
-  expiresAt: number;
-  settleDeadline: number;
-  pending: PendingIntent[];
-  nextSequence: number;
-  syncedAt: number;
-  maxPayments?: number;
-  clockOffset?: number;
-}
-
-export type LedgerErrorCode =
-  | "NO_LEDGER" | "RESERVATION_EXPIRED" | "ZERO_AMOUNT"
-  | "OVER_PER_PAYMENT_CAP" | "INSUFFICIENT_OFFLINE_BALANCE";
-
-export class LedgerError extends Error {
-  code: LedgerErrorCode;
-  constructor(code: LedgerErrorCode, message?: string) {
-    super(message ?? code);
-    this.code = code;
-  }
-}
-
-// One lock across tabs so two rapid debits can never read the same balance.
-async function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  if (typeof navigator !== "undefined" && navigator.locks) {
-    return navigator.locks.request("pat-ledger", fn) as Promise<T>;
-  }
-  return fn(); // old browsers: no cross-tab guarantee
-}
-
-// ---------- pure math ----------
-export const pendingTotal = (l: OfflineLedger): bigint =>
-  l.pending.reduce((s, p) => s + BigInt(p.amount), 0n);
-
-/** capacity - committed_on_chain - sum(pending). Clamped at 0 for display only. */
-export const availableOffline = (l: OfflineLedger): bigint => {
-  const v = BigInt(l.capacity) - BigInt(l.committedOnChain) - pendingTotal(l);
-  return v > 0n ? v : 0n;
-};
-
+export interface PendingIntent { paymentId: string; amount: string; sequence: number; signedAt: number; }
+export type HistoryStatus = "SIGNED" | "SETTLED" | "EXPIRED" | "FAILED";
+export interface HistoryEntry { paymentId: string; merchant: string; amount: string; createdAt: number; expiresAt: number; sequence: number; memo?: string; status: HistoryStatus; settleSig?: string; settledAt?: number; failureReason?: string; payload?: string; }
+export interface OfflineLedger { reservation: string; owner: string; capacity: string; perPaymentCap: string; committedOnChain: string; expiresAt: number; settleDeadline: number; pending: PendingIntent[]; history: HistoryEntry[]; nextSequence: number; syncedAt: number; maxPayments?: number; clockOffset?: number; }
+export type LedgerErrorCode = "NO_LEDGER" | "RESERVATION_EXPIRED" | "ZERO_AMOUNT" | "OVER_PER_PAYMENT_CAP" | "INSUFFICIENT_OFFLINE_BALANCE";
+export class LedgerError extends Error { code: LedgerErrorCode; constructor(code: LedgerErrorCode, message?: string) { super(message ?? code); this.code = code; } }
+async function withLock<T>(fn: () => Promise<T>): Promise<T> { if (typeof navigator !== "undefined" && navigator.locks) return navigator.locks.request("pat-ledger", fn) as Promise<T>; return fn(); }
+export const pendingTotal = (l: OfflineLedger): bigint => l.pending.reduce((s, p) => s + BigInt(p.amount), 0n);
+export const availableOffline = (l: OfflineLedger): bigint => { const v = BigInt(l.capacity) - BigInt(l.committedOnChain) - pendingTotal(l); return v > 0n ? v : 0n; };
 export type Phase = "Active" | "Expiring" | "Releasable";
-export const phaseOf = (l: OfflineLedger, now: number): Phase =>
-  now < l.expiresAt ? "Active" : now <= l.settleDeadline ? "Expiring" : "Releasable";
-
-export const randomPaymentIdHex = (): string =>
-  Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
-
-// ---------- persistence ----------
+export const phaseOf = (l: OfflineLedger, now: number): Phase => now < l.expiresAt ? "Active" : now <= l.settleDeadline ? "Expiring" : "Releasable";
+export const nowAdjusted = (l: OfflineLedger): number => Math.floor(Date.now() / 1000) + (l.clockOffset ?? 0);
+export const randomPaymentIdHex = (): string => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
 export const getLedger = (reservation: string) => store.getItem<OfflineLedger>(reservation);
-
-export async function listLedgers(owner: string): Promise<OfflineLedger[]> {
-  const out: OfflineLedger[] = [];
-  await store.iterate<OfflineLedger, void>((v) => { if (v.owner === owner) out.push(v); });
-  return out.sort((a, b) => b.expiresAt - a.expiresAt);
-}
-
+function migrate(l: OfflineLedger): OfflineLedger { const history = l.history ?? (l.pending ?? []).map((p) => ({ paymentId: p.paymentId, merchant: "", amount: p.amount, createdAt: p.signedAt, expiresAt: l.expiresAt, sequence: p.sequence, status: "SIGNED" as const })); return { ...l, pending: l.pending ?? [], history, nextSequence: l.nextSequence ?? Math.max(0, ...history.map((h) => h.sequence + 1), 0) }; }
+export async function listLedgers(owner: string): Promise<OfflineLedger[]> { const out: OfflineLedger[] = []; await store.iterate<OfflineLedger, void>((v) => { if (v.owner === owner) out.push(migrate(v)); }); return out.sort((a, b) => b.expiresAt - a.expiresAt); }
 export const deleteLedger = (reservation: string) => store.removeItem(reservation);
-
-/** Never overwrites: an existing ledger may hold pending intents that would be lost. */
-export function initLedgerIfAbsent(reservation: string, acct: ReservationAccount, metadata?: Pick<OfflineLedger, "maxPayments" | "clockOffset">): Promise<OfflineLedger> {
-  return withLock(async () => {
-    const existing = await store.getItem<OfflineLedger>(reservation);
-    if (existing) return existing;
-    const ledger: OfflineLedger = {
-      reservation,
-      owner: acct.owner.toBase58(),
-      capacity: acct.capacity.toString(),
-      perPaymentCap: acct.perPaymentCap.toString(),
-      committedOnChain: acct.committed.toString(),
-      expiresAt: Number(acct.expiresAt),
-      settleDeadline: Number(acct.settleDeadline),
-      pending: [],
-      nextSequence: 0,
-      syncedAt: Math.floor(Date.now() / 1000),
-      ...metadata,
-    };
-    await store.setItem(reservation, ledger);
-    return ledger;
-  });
-}
-
-/**
- * Day 5 refresh: updates committed_on_chain only. Pending intents are kept, so a pending
- * intent that already settled is counted twice until the Day 8 reconcile. That errs toward
- * a LOWER balance (fail closed), which is the safe direction.
- */
-export function refreshCommitted(reservation: string, acct: ReservationAccount): Promise<OfflineLedger> {
-  return withLock(async () => {
-    const l = await store.getItem<OfflineLedger>(reservation);
-    if (!l) throw new LedgerError("NO_LEDGER");
-    l.committedOnChain = acct.committed.toString();
-    l.syncedAt = Math.floor(Date.now() / 1000);
-    await store.setItem(reservation, l);
-    return l;
-  });
-}
-
-/**
- * The signing gate. Persists the debit BEFORE the caller produces a signature (write-ahead).
- * Day 6 calls this, then signs the intent with the returned sequence/committedAfter.
- */
-export function debitForPayment(
-  reservation: string,
-  req: { paymentId: string; amount: bigint },
-  now: number,
-): Promise<{ sequence: number; committedAfter: bigint }> {
-  return withLock(async () => {
-    const l = await store.getItem<OfflineLedger>(reservation);
-    if (!l) throw new LedgerError("NO_LEDGER");
-    if (now >= l.expiresAt) throw new LedgerError("RESERVATION_EXPIRED");
-    if (req.amount <= 0n) throw new LedgerError("ZERO_AMOUNT");
-    if (req.amount > BigInt(l.perPaymentCap)) throw new LedgerError("OVER_PER_PAYMENT_CAP");
-    if (req.amount > availableOffline(l)) throw new LedgerError("INSUFFICIENT_OFFLINE_BALANCE");
-
-    const sequence = l.nextSequence;
-    const committedAfter = BigInt(l.committedOnChain) + pendingTotal(l) + req.amount;
-    l.pending.push({ paymentId: req.paymentId, amount: req.amount.toString(), sequence, signedAt: now });
-    l.nextSequence += 1;
-    await store.setItem(reservation, l); // persisted before returning
-    return { sequence, committedAfter };
-  });
-}
+export function initLedgerIfAbsent(reservation: string, acct: ReservationAccount, metadata?: Pick<OfflineLedger, "maxPayments" | "clockOffset">): Promise<OfflineLedger> { return withLock(async () => { const existing = await store.getItem<OfflineLedger>(reservation); if (existing) return migrate(existing); const ledger: OfflineLedger = { reservation, owner: acct.owner.toBase58(), capacity: acct.capacity.toString(), perPaymentCap: acct.perPaymentCap.toString(), committedOnChain: acct.committed.toString(), expiresAt: Number(acct.expiresAt), settleDeadline: Number(acct.settleDeadline), pending: [], history: [], nextSequence: 0, syncedAt: Math.floor(Date.now() / 1000), ...metadata }; await store.setItem(reservation, ledger); return ledger; }); }
+export function refreshCommitted(reservation: string, acct: ReservationAccount): Promise<OfflineLedger> { return withLock(async () => { const l = await store.getItem<OfflineLedger>(reservation); if (!l) throw new LedgerError("NO_LEDGER"); l.committedOnChain = acct.committed.toString(); l.syncedAt = Math.floor(Date.now() / 1000); l.maxPayments ??= acct.paymentsSettled; await store.setItem(reservation, l); return l; }); }
+export function debitForPayment(reservation: string, req: { paymentId: string; amount: bigint }, now: number): Promise<{ sequence: number; committedAfter: bigint }> { return withLock(async () => { const l = migrate((await store.getItem<OfflineLedger>(reservation)) as OfflineLedger); if (!l) throw new LedgerError("NO_LEDGER"); if (now >= l.expiresAt) throw new LedgerError("RESERVATION_EXPIRED"); if (req.amount <= 0n) throw new LedgerError("ZERO_AMOUNT"); if (req.amount > BigInt(l.perPaymentCap)) throw new LedgerError("OVER_PER_PAYMENT_CAP"); if (req.amount > availableOffline(l)) throw new LedgerError("INSUFFICIENT_OFFLINE_BALANCE"); const sequence = l.nextSequence++; const committedAfter = BigInt(l.committedOnChain) + pendingTotal(l) + req.amount; l.pending.push({ paymentId: req.paymentId, amount: req.amount.toString(), sequence, signedAt: now }); await store.setItem(reservation, l); return { sequence, committedAfter }; }); }
+export async function addHistoryEntry(reservation: string, entry: HistoryEntry) { return withLock(async () => { const l = await store.getItem<OfflineLedger>(reservation); if (!l) throw new LedgerError("NO_LEDGER"); l.history = [...(l.history ?? []), entry]; await store.setItem(reservation, l); return l; }); }
+export async function rollbackPending(paymentId: string) { return withLock(async () => { const keys: string[] = []; await store.iterate<OfflineLedger, void>((l, key) => { if (l.pending?.some((p) => p.paymentId === paymentId)) keys.push(String(key)); }); for (const key of keys) { const l = await store.getItem<OfflineLedger>(key); if (!l) continue; l.pending = l.pending.filter((p) => p.paymentId !== paymentId); l.history = (l.history ?? []).filter((h) => h.paymentId !== paymentId); await store.setItem(key, l); } }); }
+export async function markSettled(reservation: string, paymentId: string, settleSig?: string, settledAt?: number) { const l = await getLedger(reservation); if (!l) return; const m = migrate(l); m.pending = m.pending.filter((p) => p.paymentId !== paymentId); m.history = m.history.map((h) => h.paymentId === paymentId ? { ...h, status: "SETTLED", settleSig, settledAt } : h); await store.setItem(reservation, m); }
+export async function markExpired(reservation: string, paymentId: string) { const l = await getLedger(reservation); if (!l) return; const m = migrate(l); m.pending = m.pending.filter((p) => p.paymentId !== paymentId); m.history = m.history.map((h) => h.paymentId === paymentId ? { ...h, status: "EXPIRED" } : h); await store.setItem(reservation, m); }
+export async function reconcileWithChain(connection: Connection, ledger: OfflineLedger) { const reservation = await fetchReservation(connection, new PublicKey(ledger.reservation)); if (!reservation) { for (const h of ledger.history ?? []) if (h.status === "SIGNED") { h.status = "FAILED"; h.failureReason = "Reservation withdrawn"; } ledger.pending = []; await store.setItem(ledger.reservation, ledger); return ledger; } await refreshCommitted(ledger.reservation, reservation); const signed = (ledger.history ?? []).filter((h) => h.status === "SIGNED"); const pdas = signed.map((h) => PublicKey.findProgramAddressSync([PAYMENT_SEED, new PublicKey(ledger.reservation).toBytes(), Uint8Array.from(h.paymentId.match(/.{2}/g)!, (x) => parseInt(x, 16))], PROGRAM_ID)[0]); const infos = await connection.getMultipleAccountsInfo(pdas); for (let i = 0; i < signed.length; i++) if (infos[i]) await markSettled(ledger.reservation, signed[i].paymentId); else if (nowAdjusted(ledger) > signed[i].expiresAt) await markExpired(ledger.reservation, signed[i].paymentId); return (await getLedger(ledger.reservation))!; }
+export { store as ledgerStore };
+export type { ReservationAccount };

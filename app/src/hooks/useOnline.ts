@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-// navigator.onLine is only a hint (true on a LAN with no internet). Good enough for a badge.
 export function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {

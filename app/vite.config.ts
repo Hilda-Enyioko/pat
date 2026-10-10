@@ -10,12 +10,12 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "PAT: Primitive Airborne Transaction",
+        name: "PAT",
         short_name: "PAT",
         description: "Reserve while connected. Spend while disconnected. Settle when reconnected.",
-        theme_color: "#0f172a",
-        background_color: "#0f172a",
-        display: "standalone",
+        theme_color: "#060b18",
+        background_color: "#060b18",
+        display: "browser",
         start_url: "/",
         icons: [
           { src: "pwa-192.png", sizes: "192x192", type: "image/png" },
