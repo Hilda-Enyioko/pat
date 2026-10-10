@@ -1,6 +1,8 @@
 import { PublicKey, clusterApiUrl } from "@solana/web3.js";
 
-export const PROGRAM_ID = new PublicKey(import.meta.env.VITE_PROGRAM_ID as string);
+const configuredProgramId = import.meta.env.VITE_PROGRAM_ID as string | undefined;
+// Keep the shell renderable when a local preview starts before Vite receives project vars.
+export const PROGRAM_ID = new PublicKey(configuredProgramId || "11111111111111111111111111111111");
 export const CLUSTER = "devnet" as const;
 export const RPC_URL = (import.meta.env.VITE_RPC_URL as string | undefined) ?? clusterApiUrl(CLUSTER);
 
