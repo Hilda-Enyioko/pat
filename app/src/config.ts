@@ -1,7 +1,8 @@
 import { PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 export const PROGRAM_ID = new PublicKey(import.meta.env.VITE_PROGRAM_ID as string);
-export const RPC_URL = (import.meta.env.VITE_RPC_URL as string | undefined) ?? clusterApiUrl("devnet");
+export const CLUSTER = "devnet" as const;
+export const RPC_URL = (import.meta.env.VITE_RPC_URL as string | undefined) ?? clusterApiUrl(CLUSTER);
 
 // Must match programs/pat/src/constants.rs
 export const MAX_PAYMENTS_PER_RESERVATION = 1;

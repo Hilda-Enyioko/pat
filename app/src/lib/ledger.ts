@@ -23,6 +23,8 @@ export interface OfflineLedger {
   pending: PendingIntent[];
   nextSequence: number;
   syncedAt: number;
+  maxPayments?: number;
+  clockOffset?: number;
 }
 
 export type LedgerErrorCode =
@@ -74,7 +76,7 @@ export async function listLedgers(owner: string): Promise<OfflineLedger[]> {
 export const deleteLedger = (reservation: string) => store.removeItem(reservation);
 
 /** Never overwrites: an existing ledger may hold pending intents that would be lost. */
-export function initLedgerIfAbsent(reservation: string, acct: ReservationAccount): Promise<OfflineLedger> {
+export function initLedgerIfAbsent(reservation: string, acct: ReservationAccount, metadata?: Pick<OfflineLedger, "maxPayments" | "clockOffset">): Promise<OfflineLedger> {
   return withLock(async () => {
     const existing = await store.getItem<OfflineLedger>(reservation);
     if (existing) return existing;
@@ -89,6 +91,7 @@ export function initLedgerIfAbsent(reservation: string, acct: ReservationAccount
       pending: [],
       nextSequence: 0,
       syncedAt: Math.floor(Date.now() / 1000),
+      ...metadata,
     };
     await store.setItem(reservation, ledger);
     return ledger;
