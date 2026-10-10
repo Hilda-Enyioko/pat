@@ -80,17 +80,29 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     }
   }
 
-  return <section className="card">
-    <h2>Reserve (while online)</h2>
-    <label>Offline capacity (SOL)<input value={capacitySol} onChange={(e) => setCapacitySol(e.target.value)} /></label>
-    <label>Per-payment cap (SOL)<input value={capSol} onChange={(e) => setCapSol(e.target.value)} /></label>
-    <label>Spending window (hours)<input value={hours} onChange={(e) => { setHours(e.target.value); setHoursError(null); }} aria-invalid={Boolean(hoursError)} />{hoursError && <span className="field-error">{hoursError}</span>}</label>
-    <label>Max payments (prepays receipt rent)<input value={maxPayments} onChange={(e) => setMaxPayments(e.target.value)} /></label>
-    {total && <p className="muted">Wallet pays about {total} SOL (capacity + rent reserve + account rent) plus ~0.00001 SOL network fee. Unspent funds return on withdraw.</p>}
-    <button onClick={onReserve} disabled={!publicKey || busy}>{busy ? "Working…" : "Reserve funds"}</button>
-    <div className="devnet-helper"><p>Need devnet SOL? <a href="https://faucet.solana.com" target="_blank" rel="noreferrer">Open the Solana faucet</a>.</p><button type="button" onClick={requestAirdrop} disabled={!publicKey || busy}>Airdrop 1 SOL (devnet)</button></div>
-    <p className="muted">Each intent expires within 1 hour and never outlives the spending window.</p>
-    {!publicKey && <p className="muted">Connect a wallet first.</p>}
+  return <section className="card reserve-card">
+    <div className="reserve-card-header">
+      <div>
+        <p className="card-kicker">Reservation parameters</p>
+        <h2>Reserve while online</h2>
+        <p className="card-intro">Set the allowance your wallet can spend when the network is unavailable.</p>
+      </div>
+      <span className="secure-mark" aria-label="Non-custodial">◎</span>
+    </div>
+    <div className="reserve-fields">
+      <label>Offline capacity <span className="input-unit">SOL</span><input inputMode="decimal" value={capacitySol} onChange={(e) => setCapacitySol(e.target.value)} placeholder="1.00" /></label>
+      <label>Per-payment cap <span className="input-unit">SOL</span><input inputMode="decimal" value={capSol} onChange={(e) => setCapSol(e.target.value)} placeholder="0.50" /></label>
+      <label>Spending window <span className="input-unit">HOURS</span><input inputMode="decimal" value={hours} onChange={(e) => { setHours(e.target.value); setHoursError(null); }} aria-invalid={Boolean(hoursError)} placeholder="24" />{hoursError && <span className="field-error">{hoursError}</span>}</label>
+      <label>Maximum payments <span className="input-unit">RECEIPTS</span><input inputMode="numeric" value={maxPayments} onChange={(e) => setMaxPayments(e.target.value)} placeholder="20" /></label>
+    </div>
+    <div className="reserve-summary">
+      <div><span>Estimated wallet debit</span><strong>{total ? `${total} SOL` : "—"}</strong></div>
+      <p>Includes the allowance, receipt account rent, and a small network fee. Unspent funds return on withdrawal.</p>
+    </div>
+    <button className="primary-button reserve-submit" onClick={onReserve} disabled={!publicKey || busy}>{busy ? "Preparing reservation…" : "Reserve funds"}<span aria-hidden="true">↗</span></button>
+    <div className="devnet-helper"><p>Need devnet SOL? <a href="https://faucet.solana.com" target="_blank" rel="noreferrer">Open the Solana faucet</a>.</p><button type="button" onClick={requestAirdrop} disabled={!publicKey || busy}>Airdrop 1 SOL</button></div>
+    <div className="reserve-footnote"><span aria-hidden="true">⌁</span><p>Each intent expires within 1 hour and never outlives the spending window.</p></div>
+    {!publicKey && <p className="muted connect-prompt">Connect a wallet first to continue.</p>}
     {status && <p className="status">{status}</p>}
   </section>;
 }
