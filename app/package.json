@@ -20,6 +20,7 @@
     "@solana/web3.js": "^1.99.0",
     "@yudiel/react-qr-scanner": "^2.6.0",
     "bs58": "^6.0.0",
+    "framer-motion": "^14.1.0",
     "localforage": "^1.10.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.8",

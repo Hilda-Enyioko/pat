@@ -1,3 +1,4 @@
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import "./App.css";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -12,6 +13,12 @@ import { useOnline } from "./hooks/useOnline";
 import { CLUSTER, RPC_URL } from "./config";
 
 const logoUrl = "/logo.png";
+
+const viewVariants: Variants = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
+  exit: { opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeIn" } },
+};
 
 function useOfflineReady() {
   const [ready, setReady] = useState(false);
@@ -390,7 +397,21 @@ function AppContent() {
           Offline payments ready on this device
         </div>
       )}
-      {content}
+
+      {/* Smooth cross-fade view transition */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={guardedView}
+          variants={viewVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          style={{ width: "100%", display: "flex", flexDirection: "column", flex: 1 }}
+        >
+          {content}
+        </motion.div>
+      </AnimatePresence>
+
       <footer className="site-footer">
         <span>
           {CLUSTER} · {new URL(RPC_URL).host}
