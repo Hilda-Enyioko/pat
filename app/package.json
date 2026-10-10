@@ -16,11 +16,14 @@
     "@solana/wallet-adapter-react-ui": "^0.9.40",
     "@solana/wallet-adapter-solflare": "^0.6.34",
     "@solana/web3.js": "^1.99.0",
+    "@yudiel/react-qr-scanner": "^2.6.0",
     "bs58": "^6.0.0",
     "localforage": "^1.10.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "vitest": "^5.0.3"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

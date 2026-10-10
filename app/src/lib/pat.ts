@@ -11,7 +11,7 @@ export const RESERVATION_SPACE = 109;
 export const PAYMENT_SPACE = 174;
 
 // ---------- byte helpers ----------
-const concat = (parts: Uint8Array[]): Uint8Array => {
+export const concatBytes = (parts: Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
   for (const p of parts) { out.set(p, o); o += p.length; }
@@ -53,7 +53,7 @@ export interface ReserveParams {
 
 export async function buildReserveIx(p: ReserveParams) {
   const [reservation] = findReservationPda(p.owner, p.reservationId);
-  const data = concat([
+  const data = concatBytes([
     await discriminator("global:reserve"),
     u64le(p.reservationId),
     u64le(p.capacity),
