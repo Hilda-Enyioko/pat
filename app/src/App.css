@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Design Tokens & Theme Variables (Dark Mode by default)
+   Design Tokens & Theme Variables (Dark Mode default)
    ========================================================================== */
 :root {
   /* Brand & Accents */
@@ -10,8 +10,8 @@
   --green: #22c55e;
   --amber: #f59e0b;
 
-  /* Geometry / Border Radii */
-  --btn-radius: 6px;       /* Squared shape with gentle rounding */
+  /* Geometry / Border Radii (squared with subtle rounding) */
+  --btn-radius: 6px;
   --card-radius: 12px;
   --input-radius: 6px;
   --pill-radius: 4px;
@@ -22,7 +22,7 @@
   --navy-3: #111e3f;
   --surface-card: rgba(11, 21, 45, 0.75);
 
-  /* Borders & Lines */
+  /* Borders & Glass Lines */
   --line: rgba(255, 255, 255, 0.1);
   --line-strong: rgba(255, 255, 255, 0.18);
   --glass-fill: rgba(255, 255, 255, 0.05);
@@ -49,7 +49,7 @@
   --navy: #f8fafc;
   --navy-2: #ffffff;
   --navy-3: #edf2f7;
-  --surface-card: rgba(255, 255, 255, 0.9);
+  --surface-card: rgba(255, 255, 255, 0.92);
 
   --line: rgba(15, 23, 42, 0.1);
   --line-strong: rgba(15, 23, 42, 0.18);
@@ -66,13 +66,13 @@
   --focus: #0070f3;
 }
 
-/* Automatic system preference trigger (when no data-theme attribute is forced) */
+/* Automatic System Preference Fallback */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --navy: #f8fafc;
     --navy-2: #ffffff;
     --navy-3: #edf2f7;
-    --surface-card: rgba(255, 255, 255, 0.9);
+    --surface-card: rgba(255, 255, 255, 0.92);
 
     --line: rgba(15, 23, 42, 0.1);
     --line-strong: rgba(15, 23, 42, 0.18);
@@ -109,16 +109,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-button,
 input,
 select,
 textarea {
   font-family: inherit;
   color: inherit;
-}
-
-button {
-  cursor: pointer;
 }
 
 button:focus-visible,
@@ -131,7 +126,80 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   App Shell & Structure
+   Button System (Minimalist Nav-Link Aesthetic)
+   ========================================================================== */
+button,
+.primary-button,
+.quiet-button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: var(--btn-radius);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: none;
+  transition:
+    color 0.18s var(--e-reveal),
+    background-color 0.18s var(--e-reveal),
+    border-color 0.18s var(--e-reveal),
+    transform 0.1s ease;
+}
+
+button:hover:not(:disabled),
+.quiet-button:hover:not(:disabled) {
+  color: var(--text-main);
+  background: var(--glass-fill);
+  border-color: var(--line);
+  transform: none;
+}
+
+button:active:not(:disabled),
+.quiet-button:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--blue);
+  border-color: var(--blue);
+  transform: scale(0.98);
+}
+
+/* Primary Action Accent Variant */
+.primary-button {
+  color: var(--text-main);
+  background: rgba(24, 140, 255, 0.12);
+  border: 1px solid rgba(24, 140, 255, 0.35);
+}
+
+.primary-button:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(24, 140, 255, 0.22);
+  border-color: rgba(24, 140, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.primary-button:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--blue);
+  border-color: var(--blue);
+  transform: scale(0.98);
+}
+
+button:disabled,
+.primary-button:disabled,
+.quiet-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   App Shell & Containers
    ========================================================================== */
 .app-shell {
   min-height: 100vh;
@@ -164,7 +232,7 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   Navigation
+   Navigation Header (Desktop & Core)
    ========================================================================== */
 .site-nav {
   position: sticky;
@@ -177,6 +245,7 @@ textarea:focus-visible {
   padding: 0 24px;
   background: var(--navy);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
 
@@ -202,18 +271,18 @@ textarea:focus-visible {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .nav-links button {
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-size: 14px;
   font-weight: 500;
   padding: 8px 14px;
   border-radius: var(--btn-radius);
-  transition: color 0.2s ease, background-color 0.2s ease;
+  transition: color 0.18s ease, background-color 0.18s ease;
 }
 
 .nav-links button:hover {
@@ -283,82 +352,14 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
-   Buttons (Inheriting the Nav-Link Pill Style)
+   Mobile Dropdown Elements (Hidden on Desktop by default)
    ========================================================================== */
-button,
-.primary-button,
-.quiet-button {
-  /* Match nav-links button defaults */
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: var(--btn-radius);
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: none;
-  transition: 
-    color 0.18s var(--e-reveal),
-    background-color 0.18s var(--e-reveal),
-    border-color 0.18s var(--e-reveal),
-    transform 0.1s ease;
+.mobile-menu-trigger {
+  display: none;
 }
 
-/* --- Hover State --- */
-button:hover:not(:disabled),
-.primary-button:hover:not(:disabled),
-.quiet-button:hover:not(:disabled) {
-  color: var(--text-main);
-  background: var(--glass-fill);
-  border-color: var(--line);
-  transform: none; /* Keep flat without shifting up */
-}
-
-/* --- On Click (Active) State --- */
-button:active:not(:disabled),
-.primary-button:active:not(:disabled),
-.quiet-button:active:not(:disabled) {
-  color: #ffffff;
-  background: var(--blue);
-  border-color: var(--blue);
-  transform: scale(0.98); /* Subtle tactile press */
-}
-
-/* --- Optional: Primary Accent Variant --- 
-   If you still want your main call-to-action (e.g., "Reserve funds", "Sign payment") 
-   to look selected/active by default, like an active nav-link: */
-.primary-button {
-  color: var(--text-main);
-  background: rgba(24, 140, 255, 0.12);
-  border: 1px solid rgba(24, 140, 255, 0.35);
-}
-
-.primary-button:hover:not(:disabled) {
-  color: #ffffff;
-  background: rgba(24, 140, 255, 0.22);
-  border-color: rgba(24, 140, 255, 0.5);
-}
-
-.primary-button:active:not(:disabled) {
-  color: #ffffff;
-  background: var(--blue);
-  border-color: var(--blue);
-}
-
-/* --- Disabled State --- */
-button:disabled,
-.primary-button:disabled,
-.quiet-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
+.mobile-dropdown-menu {
+  display: none;
 }
 
 /* ==========================================================================
@@ -582,9 +583,13 @@ button:disabled,
 .connect-card {
   background: var(--surface-card);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  transition: transform 0.3s var(--e-reveal), border-color 0.3s, box-shadow 0.3s;
+  transition:
+    transform 0.3s var(--e-reveal),
+    border-color 0.3s,
+    box-shadow 0.3s;
 }
 
 .card:hover,
@@ -869,11 +874,6 @@ button:disabled,
 .refresh-button {
   padding: 8px 18px;
   font-size: 13px;
-}
-
-.refresh-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .status-message {
@@ -1206,12 +1206,12 @@ button:disabled,
   border: 1px solid var(--line) !important;
   color: var(--text-muted) !important;
   border-radius: var(--btn-radius) !important;
-  height: auto !important;
-  padding: 8px 16px !important;
+  height: 38px !important;
+  padding: 0 16px !important;
   font-size: 14px !important;
   font-weight: 500 !important;
   box-shadow: none !important;
-  transition: 
+  transition:
     color 0.18s ease,
     background-color 0.18s ease,
     border-color 0.18s ease !important;
@@ -1261,83 +1261,203 @@ button:disabled,
 /* ==========================================================================
    Keyframe Animations
    ========================================================================== */
-@keyframes globeIn { to { opacity: 1; } }
-@keyframes lineRise { to { transform: translateY(0); opacity: 1; } }
-@keyframes subIn { from { opacity: 0; filter: blur(4px); transform: translateY(14px); } to { opacity: 1; filter: blur(0); transform: none; } }
-@keyframes pillIn { from { opacity: 0; transform: translateY(12px) scale(0.972); } to { opacity: 1; transform: none; } }
-@keyframes liftIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes bob { 50% { transform: translateY(4px); } }
+@keyframes globeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lineRise {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes subIn {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+@keyframes pillIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.972);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes liftIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+@keyframes menuDrop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 /* ==========================================================================
-   Responsive Breakpoints
+   Responsive Breakpoints & Mobile Dropdown
    ========================================================================== */
 @media (max-width: 1160px) {
-  .hero-inner { width: calc(100% - 48px); }
-  .hero-inner h1 { font-size: clamp(60px, 8vw, 89px); }
+  .hero-inner {
+    width: calc(100% - 48px);
+  }
+  .hero-inner h1 {
+    font-size: clamp(60px, 8vw, 89px);
+  }
 }
 
 @media (max-width: 860px) {
-  .merchant-grid { grid-template-columns: 1fr; }
-  .feature-strip { grid-template-columns: 1fr; gap: 40px; padding: 60px 24px; }
+  .merchant-grid {
+    grid-template-columns: 1fr;
+  }
+  .feature-strip {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding: 60px 24px;
+  }
 }
 
 @media (max-width: 600px) {
-  .field-grid { grid-template-columns: 1fr; }
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
+/* Mobile Viewport <= 552px: Activates Hamburger and Dropdown */
 @media (max-width: 552px) {
   .site-nav {
+    position: relative; /* Anchor for absolute mobile dropdown */
     padding: 0 16px;
+    height: 56px;
   }
 
-  /* Hide navigation bar on the landing screen to keep the hero uncluttered */
-  .nav-links.landing-hide {
+  /* Hide desktop inline links & long desktop-only elements */
+  .nav-links,
+  .desktop-only {
     display: none !important;
   }
 
-  /* Fixed bottom app navigation bar */
-  .nav-links {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 90;
-    background: var(--navy-2);
-    border-top: 1px solid var(--line);
-    padding: 8px 6px calc(env(safe-area-inset-bottom, 0px) + 8px);
-    gap: 4px;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(16px);
-  }
-
-  .nav-links button {
-    display: flex;
+  /* Show mobile hamburger trigger */
+  .mobile-menu-trigger {
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
-    font-size: 12px;
-    padding: 8px 2px;
-    text-align: center;
-    white-space: nowrap;
+    background: var(--navy-2);
+    border: 1px solid var(--line);
+    color: var(--text-main);
+    padding: 6px 10px;
+    font-size: 16px;
     border-radius: var(--btn-radius);
+    cursor: pointer;
+    line-height: 1;
   }
 
-  .nav-links button.active {
-    background: rgba(24, 140, 255, 0.15);
+  /* Dropdown Menu (rendered when open) */
+  .mobile-dropdown-menu {
+    display: flex !important;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 16px;
+    width: 200px;
+    background: var(--navy-2);
+    border: 1px solid var(--line);
+    border-radius: var(--card-radius);
+    padding: 8px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    flex-direction: column;
+    gap: 4px;
+    z-index: 100;
+    animation: menuDrop 0.18s var(--e-reveal) forwards;
+  }
+
+  .mobile-dropdown-wallet {
+    padding: 4px 6px 8px;
+  }
+
+  .mobile-dropdown-divider {
+    height: 1px;
+    background: var(--line);
+    margin: 4px 0;
+  }
+
+  .mobile-menu-item {
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    border-radius: var(--btn-radius);
+    transition: all 0.15s ease;
+  }
+
+  .mobile-menu-item:hover {
+    background: var(--glass-fill);
+    color: var(--text-main);
+  }
+
+  .mobile-menu-item.active {
+    background: rgba(24, 140, 255, 0.12);
     color: var(--blue-soft);
-    border: 1px solid rgba(24, 140, 255, 0.3);
+    border-color: rgba(24, 140, 255, 0.3);
   }
 
+  .mobile-menu-item.disconnect-item {
+    color: #fca5a5;
+  }
+
+  .mobile-menu-item.disconnect-item:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+  }
+
+  /* Spacing */
   .workspace {
-    padding-bottom: 96px;
+    padding-top: 24px;
+    padding-bottom: 60px;
   }
 
   .site-footer {
-    padding-bottom: 84px;
+    padding-bottom: 24px;
   }
 
+  /* Landing hero adjustments */
   .landing-hero {
     --u: 1px;
   }
@@ -1385,8 +1505,12 @@ button:disabled,
   }
 }
 
+/* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .globe-bg canvas { animation: none; opacity: 1; }
+  .globe-bg canvas {
+    animation: none;
+    opacity: 1;
+  }
   .anim .hero-inner .ln-i,
   .anim .hero-inner .hero-lede,
   .anim .hero-inner .hero-actions,

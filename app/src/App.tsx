@@ -33,7 +33,11 @@ function useOfflineReady() {
 }
 
 type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
-const hashViews: View[] = ["ledger", "reserve", "sign", "merchant"];
+const pathViews: View[] = ["ledger", "reserve", "sign", "merchant"];
+
+function Arrow() {
+  return <span aria-hidden="true">↗</span>;
+}
 
 function WalletGate() {
   const { wallets } = useWallet();
@@ -66,60 +70,145 @@ function Nav({
   publicKey: string | null;
   online: boolean;
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close the mobile dropdown if window is resized past mobile breakpoint
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 552) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const handleNavigate = (next: View) => {
+    setView(next);
+    setMobileMenuOpen(false);
+  };
+
+  const handleDisconnect = () => {
+    onDisconnect();
+    setMobileMenuOpen(false);
+  };
+
   return (
     <header className="site-nav">
       <button
         className="brand"
-        onClick={() => setView("landing")}
+        onClick={() => handleNavigate("landing")}
         aria-label="PAT home"
       >
         <img src={logoUrl} alt="PAT" />
         <span>PAT</span>
       </button>
-      <nav 
-        className={`nav-links ${view === "landing" ? "landing-hide" : ""}`} 
-        aria-label="Primary navigation"
-      >
+
+      {/* Desktop Navigation Links */}
+      <nav className="nav-links" aria-label="Primary navigation">
         <button
           className={view === "ledger" ? "active" : ""}
-          onClick={() => setView("ledger")}
+          onClick={() => handleNavigate("ledger")}
         >
-        Ledger
+          Ledger
         </button>
         <button
           className={view === "reserve" ? "active" : ""}
-          onClick={() => setView("reserve")}
+          onClick={() => handleNavigate("reserve")}
         >
-        Reserve
+          Reserve Funds
         </button>
         <button
           className={view === "sign" ? "active" : ""}
-          onClick={() => setView("sign")}
+          onClick={() => handleNavigate("sign")}
         >
-        Sign
+          Sign payment
         </button>
         <button
           className={view === "merchant" ? "active" : ""}
-          onClick={() => setView("merchant")}
+          onClick={() => handleNavigate("merchant")}
         >
           Merchant
         </button>
       </nav>
+
+      {/* Action Strip */}
       <div className="nav-actions">
         {publicKey ? (
           <>
-            <span className="wallet-chip">{shortKey(publicKey)}</span>
+            <span className="wallet-chip desktop-only">{shortKey(publicKey)}</span>
             <span className={online ? "online-indicator" : "offline-badge"}>
               {online ? "Online" : "Offline"}
             </span>
-            <button className="text-button" onClick={onDisconnect}>
+            <button
+              className="text-button desktop-only"
+              onClick={handleDisconnect}
+            >
               Disconnect
             </button>
           </>
         ) : (
           <WalletMultiButton />
         )}
+
+        {/* Mobile Dropdown Trigger (visible <= 552px only) */}
+        <button
+          className="mobile-menu-trigger"
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+        >
+          {mobileMenuOpen ? "✕" : "☰"}
+        </button>
       </div>
+
+      {/* Mobile Dropdown Menu */}
+      {mobileMenuOpen && (
+        <div className="mobile-dropdown-menu">
+          {publicKey && (
+            <div className="mobile-dropdown-wallet">
+              <span className="wallet-chip">{shortKey(publicKey)}</span>
+            </div>
+          )}
+
+          <button
+            className={`mobile-menu-item ${view === "ledger" ? "active" : ""}`}
+            onClick={() => handleNavigate("ledger")}
+          >
+            Ledger
+          </button>
+          <button
+            className={`mobile-menu-item ${view === "reserve" ? "active" : ""}`}
+            onClick={() => handleNavigate("reserve")}
+          >
+            Reserve
+          </button>
+          <button
+            className={`mobile-menu-item ${view === "sign" ? "active" : ""}`}
+            onClick={() => handleNavigate("sign")}
+          >
+            Sign
+          </button>
+          <button
+            className={`mobile-menu-item ${view === "merchant" ? "active" : ""}`}
+            onClick={() => handleNavigate("merchant")}
+          >
+            Merchant
+          </button>
+
+          {publicKey && (
+            <>
+              <div className="mobile-dropdown-divider" />
+              <button
+                className="mobile-menu-item disconnect-item"
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </header>
   );
 }
@@ -156,7 +245,7 @@ function Landing({ onStart }: { onStart: () => void }) {
           </p>
           <div className="hero-actions">
             <button className="primary-button" onClick={onStart}>
-              Connect wallet
+              Connect wallet <Arrow />
             </button>
             <button
               className="quiet-button"
@@ -237,16 +326,21 @@ function AppContent() {
   const { publicKey, disconnect } = useWallet();
   const online = useOnline();
   const offlineReady = useOfflineReady();
+
+  // Initialize view from URL path instead of URL hash
   const [view, setViewState] = useState<View>(() => {
     const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
-    return hashViews.includes(candidate) ? candidate : "landing";
+    return pathViews.includes(candidate) ? candidate : "landing";
   });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
 
+  // Update browser history via pushState on navigation
   const setView = useCallback((next: View) => {
     setViewState(next);
     const targetPath = next === "landing" ? "/" : `/${next}`;
-    window.history.pushState(null, "", targetPath);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, "", targetPath);
+    }
   }, []);
 
   const reload = useCallback(async () => {
@@ -257,10 +351,11 @@ function AppContent() {
     void reload();
   }, [reload]);
 
+  // Synchronize browser forward/back buttons
   useEffect(() => {
     const handlePopState = () => {
       const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
-      setViewState(hashViews.includes(candidate) ? candidate : "landing");
+      setViewState(pathViews.includes(candidate) ? candidate : "landing");
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -314,7 +409,7 @@ function AppContent() {
             </p>
           </div>
           <button className="primary-button" onClick={() => setView("reserve")}>
-            Reserve funds
+            Reserve funds <Arrow />
           </button>
         </div>
         {ledgers.length === 0 ? (
@@ -325,7 +420,7 @@ function AppContent() {
               here.
             </p>
             <button className="primary-button" onClick={() => setView("reserve")}>
-              Create reservation
+              Create reservation <Arrow />
             </button>
           </div>
         ) : (
@@ -383,7 +478,7 @@ function AppContent() {
         </div>
       )}
 
-      {/* Smooth cross-fade view transition */}
+      {/* Smooth cross-fade transition */}
       <AnimatePresence mode="wait">
         <motion.div
           key={guardedView}
