@@ -3,6 +3,9 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import nacl from "tweetnacl";
+import bs58 from "bs58";
+
 import {
   availableOffline,
   addHistoryEntry,
@@ -18,8 +21,6 @@ import {
   serializeIntentSigningBytes,
   type SignedIntentPayload,
 } from "../lib/intent";
-import nacl from "tweetnacl";
-import bs58 from "bs58";
 import { buildSettleIx, mapProgramError } from "../lib/pat";
 import { lamportsToSol, solToLamports, shortKey } from "../lib/format";
 
@@ -136,7 +137,12 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
     a.click();
   };
 
-  const isErrorStatus = status?.startsWith("Connect") || status?.startsWith("Choose") || status?.startsWith("Amount") || status?.startsWith("Reservation") || status?.startsWith("Wallet returned");
+  const isErrorStatus =
+    status?.startsWith("Connect") ||
+    status?.startsWith("Choose") ||
+    status?.startsWith("Amount") ||
+    status?.startsWith("Reservation") ||
+    status?.startsWith("Wallet returned");
   const isSuccessStatus = status?.startsWith("Signed offline payment");
 
   return (
@@ -431,12 +437,33 @@ export function MerchantSettlement() {
       );
 
       // -------------------------------------------------------------------------
-      // 6. Record Settled Entry into Local Ledger History
+      // 6. Record Settled Entry
       // -------------------------------------------------------------------------
       const hexPaymentId = Array.from(parsed.paymentId)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
 
+      // A. Record in Merchant Received History (Always available to the merchant)
+      try {
+        const receipt = {
+          signature: tx,
+          paymentId: hexPaymentId,
+          reservation: parsed.reservation.toBase58(),
+          payer: parsed.payer.toBase58(),
+          merchant: publicKey.toBase58(),
+          amount: parsed.amount.toString(),
+          settledAt: Math.floor(Date.now() / 1000),
+          memo: `Settled tx: ${tx.slice(0, 8)}…`,
+        };
+
+        const merchantKey = `pat:merchant_history:${publicKey.toBase58()}`;
+        const existing = JSON.parse(localStorage.getItem(merchantKey) || "[]");
+        localStorage.setItem(merchantKey, JSON.stringify([receipt, ...existing]));
+      } catch (e) {
+        console.warn("Failed saving to merchant receipts:", e);
+      }
+
+      // B. If this device ALSO happens to hold the payer's ledger (e.g., self-testing on one device):
       try {
         await addHistoryEntry(parsed.reservation.toBase58(), {
           paymentId: hexPaymentId,
@@ -449,8 +476,11 @@ export function MerchantSettlement() {
           status: "SETTLED",
           payload: raw || undefined,
         });
-      } catch (historyErr) {
-        console.warn("Could not record settled payment into local ledger:", historyErr);
+      } catch (historyErr: any) {
+        // If NO_LEDGER, it's expected on an independent merchant machine
+        if (historyErr?.message !== "NO_LEDGER" && historyErr?.code !== "NO_LEDGER") {
+          console.warn("Could not update local reservation ledger:", historyErr);
+        }
       }
 
       setStatus(`Payment settled ✔  Tx: ${tx.slice(0, 8)}…`);
@@ -478,7 +508,11 @@ export function MerchantSettlement() {
     }
   }
 
-  const isError = status.startsWith("Invalid") || status.startsWith("Camera unavailable") || status.startsWith("Connect") || status.startsWith("Connected wallet");
+  const isError =
+    status.startsWith("Invalid") ||
+    status.startsWith("Camera unavailable") ||
+    status.startsWith("Connect") ||
+    status.startsWith("Connected wallet");
   const isValid = status.startsWith("Signature valid") || status.startsWith("Payment settled");
 
   return (

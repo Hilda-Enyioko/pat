@@ -6,6 +6,30 @@ import { fetchReservation, PAYMENT_SEED } from "./pat";
 import { PROGRAM_ID } from "../config";
 
 const store = localforage.createInstance({ name: "pat", storeName: "ledgers" });
+export interface MerchantReceipt {
+  signature: string;
+  paymentId: string;
+  reservation: string;
+  payer: string;
+  merchant: string;
+  amount: string;
+  settledAt: number;
+  memo?: string;
+}
+
+export function saveMerchantReceipt(receipt: MerchantReceipt) {
+  const key = `pat:merchant_history:${receipt.merchant}`;
+  const raw = localStorage.getItem(key);
+  const list: MerchantReceipt[] = raw ? JSON.parse(raw) : [];
+  list.unshift(receipt);
+  localStorage.setItem(key, JSON.stringify(list));
+}
+
+export function getMerchantReceipts(merchantKey: string): MerchantReceipt[] {
+  const key = `pat:merchant_history:${merchantKey}`;
+  const raw = localStorage.getItem(key);
+  return raw ? JSON.parse(raw) : [];
+}
 export interface PendingIntent { paymentId: string; amount: string; sequence: number; signedAt: number; }
 export type HistoryStatus = "SIGNED" | "SETTLED" | "EXPIRED" | "FAILED";
 export interface HistoryEntry { paymentId: string; merchant: string; amount: string; createdAt: number; expiresAt: number; sequence: number; memo?: string; status: HistoryStatus; settleSig?: string; settledAt?: number; failureReason?: string; payload?: string; }
