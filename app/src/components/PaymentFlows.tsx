@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction } from "@solana/web3.js";
 import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { availableOffline, addHistoryEntry, debitForPayment, nowAdjusted, rollbackPending, type OfflineLedger } from "../lib/ledger";
 import { buildIntent, encodeSignedPayload, intentFromJson, serializeIntentSigningBytes, type SignedIntentPayload } from "../lib/intent";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
+import { buildSettleIx, mapProgramError } from "../lib/pat";
 import { lamportsToSol, solToLamports } from "../lib/format";
 
 export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
@@ -33,5 +34,46 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
   return <main className="workspace page-shell"><div className="workspace-heading"><div><p className="eyebrow">Step 3 / 3</p><h1>Sign a payment.</h1><p className="muted">Your device clock is used; keep it accurate.</p></div></div><section className="intent-card"><label>Reservation<select value={selected} onChange={(e) => setSelected(e.target.value)}>{ledgers.map((ledger) => <option key={ledger.reservation} value={ledger.reservation}>{ledger.reservation.slice(0, 8)}… · {lamportsToSol(availableOffline(ledger))} SOL available</option>)}</select></label><label>Merchant wallet<input value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder="Merchant public key" /></label><label>Amount (SOL)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" /></label><label>Memo (optional)<input value={memo} onChange={(e) => setMemo(e.target.value)} /></label><button className="primary-button full" onClick={() => void signPayment()}>Sign payment</button>{status && <p className="status">{status}</p>}{payload && intent && <div className="qr-result"><QRCodeCanvas value={payload} size={220} level="M" includeMargin /><p className="muted">Payment {Array.from(intent.paymentId).slice(0, 4).join("")}… · sequence {intent.sequence}</p><button onClick={() => void navigator.clipboard.writeText(payload)}>Copy payload</button><button onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" })); a.download = `${Array.from(intent.paymentId).map((b) => b.toString(16).padStart(2, "0")).join("")}.pat`; a.click(); }}>Download .pat</button></div>}</section></main>;
 }
 
-export function MerchantSettlement() { const [raw, setRaw] = useState(""); const [status, setStatus] = useState("Scan or paste a signed payment."); const [parsed, setParsed] = useState<SignedIntentPayload | null>(null); const { publicKey } = useWallet(); function consume(value: string) { try { const data = JSON.parse(value) as { intent: Record<string, unknown>; signature: string }; const next = intentFromJson(data.intent); if (publicKey && !next.merchant.equals(publicKey)) throw new Error("Merchant mismatch."); if (Number(next.expiresAt) < Math.floor(Date.now() / 1000)) throw new Error("Payment expired."); if (!nacl.sign.detached.verify(serializeIntentSigningBytes(next), bs58.decode(data.signature), next.payer.toBytes())) throw new Error("Signature verification failed."); setParsed(next); setStatus("Signature valid. Funds are only confirmed once you settle online."); } catch (e) { setStatus(`Invalid payment: ${e instanceof Error ? e.message : String(e)}`); } } return <main className="workspace page-shell"><div className="workspace-heading"><div><p className="eyebrow">Merchant mode</p><h1>Accept offline payment.</h1></div></div><section className="merchant-grid"><div className="scanner-card"><Scanner onScan={(r) => { if (r[0]?.rawValue) consume(r[0].rawValue); }} onError={() => setStatus("Camera unavailable. Paste the signed payload instead.")} /><textarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste signed payload" /><button onClick={() => consume(raw)}>Verify payment</button></div><section className="card settlement-summary"><p>{status}</p>{parsed && <h2>{lamportsToSol(parsed.amount)} SOL</h2>}</section></section></main>; }
+export function MerchantSettlement() {
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction } = useWallet();
+  const [raw, setRaw] = useState("");
+  const [status, setStatus] = useState("Scan or paste a signed payment.");
+  const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
+  const [signature, setSignature] = useState<Uint8Array | null>(null);
+  const [settling, setSettling] = useState(false);
+
+  function consume(value: string) {
+    try {
+      const data = JSON.parse(value) as { intent: Record<string, unknown>; signature: string };
+      const next = intentFromJson(data.intent);
+      const sig = bs58.decode(data.signature);
+      if (sig.length !== 64) throw new Error("Invalid signature length.");
+      if (publicKey && !next.merchant.equals(publicKey)) throw new Error("Merchant mismatch.");
+      if (Number(next.expiresAt) < Math.floor(Date.now() / 1000)) throw new Error("Payment expired.");
+      if (!nacl.sign.detached.verify(serializeIntentSigningBytes(next), sig, next.payer.toBytes())) throw new Error("Signature verification failed.");
+      setParsed(next); setSignature(sig); setStatus("Signature valid. Settle online to confirm funds.");
+    } catch (e) { setParsed(null); setSignature(null); setStatus(`Invalid payment: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+
+  async function settle() {
+    if (!parsed || !signature) return;
+    if (!publicKey) { setStatus("Connect the merchant wallet to settle."); return; }
+    setSettling(true); setStatus("Submitting settlement…");
+    try {
+      const instructions = await buildSettleIx({ settler: publicKey, intent: parsed, signature });
+      const transaction = new Transaction().add(...instructions);
+      const latest = await connection.getLatestBlockhash("confirmed");
+      transaction.recentBlockhash = latest.blockhash;
+      transaction.feePayer = publicKey;
+      const tx = await sendTransaction(transaction, connection);
+      await connection.confirmTransaction({ signature: tx, ...latest }, "confirmed");
+      setStatus(`Payment settled. Transaction ${tx.slice(0, 8)}…`);
+    } catch (e) {
+      setStatus(mapProgramError(e));
+    } finally { setSettling(false); }
+  }
+
+  return <main className="workspace page-shell"><div className="workspace-heading"><div><p className="eyebrow">Merchant mode</p><h1>Accept offline payment.</h1><p className="muted">Verify locally, then settle once you are back online.</p></div></div><section className="merchant-grid"><div className="scanner-card"><Scanner onScan={(r) => { if (r[0]?.rawValue) consume(r[0].rawValue); }} onError={() => setStatus("Camera unavailable. Paste the signed payload instead.")} /><textarea value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Paste signed payload" aria-label="Signed payment payload" /><button onClick={() => consume(raw)}>Verify payment</button></div><section className="card settlement-summary"><p>{status}</p>{parsed && <><h2>{lamportsToSol(parsed.amount)} SOL</h2><p className="muted">Merchant {parsed.merchant.toBase58().slice(0, 8)}…</p><button className="primary-button" disabled={settling} onClick={() => void settle()}>{settling ? "Settling…" : "Settle payment"}</button></>}</section></section></main>;
+}
 export type SignedPayment = { intent: SignedIntentPayload; signature: string };

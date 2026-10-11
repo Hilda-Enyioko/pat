@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
-import { Connection, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
+import { Connection, Ed25519Program, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram, TransactionInstruction } from "@solana/web3.js";
+import type { SignedIntentPayload } from "./intent";
 import { PROGRAM_ID } from "../config";
 
 const te = new TextEncoder();
@@ -38,6 +39,55 @@ export function findReservationPda(owner: PublicKey, reservationId: bigint): [Pu
     [RESERVATION_SEED, owner.toBytes(), u64le(reservationId)],
     PROGRAM_ID,
   );
+}
+
+export function derivePaymentPda(reservation: PublicKey, paymentId: Uint8Array): [PublicKey, number] {
+  if (paymentId.length !== 32) throw new Error("payment_id must be 32 bytes");
+  return PublicKey.findProgramAddressSync([PAYMENT_SEED, reservation.toBytes(), paymentId], PROGRAM_ID);
+}
+
+export async function buildSettleIx({ settler, intent, signature }: { settler: PublicKey; intent: SignedIntentPayload; signature: Uint8Array }): Promise<TransactionInstruction[]> {
+  if (signature.length !== 64) throw new Error("signature must be 64 bytes");
+  const [payment] = derivePaymentPda(intent.reservation, intent.paymentId);
+  const ed25519 = Ed25519Program.createInstructionWithPublicKey({
+    publicKey: intent.payer.toBytes(),
+    message: (await import("./intent")).serializeIntentSigningBytes(intent),
+    signature,
+  });
+  const settleData = concatBytes([
+    await discriminator("global:settle"),
+    new Uint8Array([intent.version, intent.cluster]), intent.paymentId,
+    intent.payer.toBytes(), intent.merchant.toBytes(), intent.reservation.toBytes(),
+    u64le(intent.amount), i64le(intent.createdAt), i64le(intent.expiresAt),
+    u32le(intent.sequence), u64le(intent.committedAfter),
+  ]);
+  const settle = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: settler, isSigner: true, isWritable: true },
+      { pubkey: intent.reservation, isSigner: false, isWritable: true },
+      { pubkey: intent.merchant, isSigner: false, isWritable: true },
+      { pubkey: payment, isSigner: false, isWritable: true },
+      { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(settleData),
+  });
+  return [ed25519, settle];
+}
+
+export function mapProgramError(err: unknown, logs?: string[]): string {
+  const text = `${err instanceof Error ? err.message : String(err)} ${logs?.join(" ") ?? ""}`.toLowerCase();
+  if (text.includes("already in use") || text.includes("account already exists")) return "Already settled";
+  if (text.includes("merchant") && text.includes("match")) return "Merchant account does not match the signed payment.";
+  if (text.includes("invalidintentwindow") || text.includes("invalid intent window")) return "Invalid intent window; the customer's device clock may have been off. Ask for a new payment.";
+  if (text.includes("rentreserveexhausted") || text.includes("rent reserve")) return "The reservation cannot cover payment account rent.";
+  if (text.includes("lamportinvariantbroken") || text.includes("lamport invariant")) return "The reservation balance invariant was violated.";
+  if (text.includes("exceedsperpaymentcap") || text.includes("per-payment cap")) return "The payment exceeds the reservation per-payment cap.";
+  if (text.includes("insufficientcapacity") || text.includes("capacity")) return "The reservation has insufficient remaining capacity.";
+  if (text.includes("settlewindowclosed") || text.includes("settlement window")) return "The settlement deadline has passed.";
+  if (text.includes("invalidsignature") || text.includes("signature") || text.includes("ed25519")) return "The on-chain signature verification failed.";
+  return err instanceof Error ? err.message : "Settlement failed.";
 }
 
 // ---------- reserve ----------
