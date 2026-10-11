@@ -76,24 +76,27 @@ function Nav({
         <img src={logoUrl} alt="PAT" />
         <span>PAT</span>
       </button>
-      <nav className="nav-links" aria-label="Primary navigation">
+      <nav 
+        className={`nav-links ${view === "landing" ? "landing-hide" : ""}`} 
+        aria-label="Primary navigation"
+      >
         <button
           className={view === "ledger" ? "active" : ""}
           onClick={() => setView("ledger")}
         >
-          Ledger
+        Ledger
         </button>
         <button
           className={view === "reserve" ? "active" : ""}
           onClick={() => setView("reserve")}
         >
-          Reserve Funds
+        Reserve
         </button>
         <button
           className={view === "sign" ? "active" : ""}
           onClick={() => setView("sign")}
         >
-          Sign payment
+        Sign
         </button>
         <button
           className={view === "merchant" ? "active" : ""}
@@ -235,18 +238,15 @@ function AppContent() {
   const online = useOnline();
   const offlineReady = useOfflineReady();
   const [view, setViewState] = useState<View>(() => {
-    const candidate = window.location.hash.replace("#/", "") as View;
+    const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
     return hashViews.includes(candidate) ? candidate : "landing";
   });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
 
   const setView = useCallback((next: View) => {
     setViewState(next);
-    if (next === "landing" || next === "connect") {
-      window.history.replaceState(null, "", window.location.pathname);
-    } else {
-      window.history.replaceState(null, "", `#/${next}`);
-    }
+    const targetPath = next === "landing" ? "/" : `/${next}`;
+    window.history.pushState(null, "", targetPath);
   }, []);
 
   const reload = useCallback(async () => {
@@ -256,6 +256,16 @@ function AppContent() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
+      setViewState(hashViews.includes(candidate) ? candidate : "landing");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!publicKey) {

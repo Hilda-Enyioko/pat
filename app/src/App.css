@@ -1286,9 +1286,62 @@ button:disabled,
 }
 
 @media (max-width: 552px) {
-  .site-nav { padding: 0 16px; }
-  .nav-links { display: none; }
-  .landing-hero { --u: 1px; }
+  .site-nav {
+    padding: 0 16px;
+  }
+
+  /* Hide navigation bar on the landing screen to keep the hero uncluttered */
+  .nav-links.landing-hide {
+    display: none !important;
+  }
+
+  /* Fixed bottom app navigation bar */
+  .nav-links {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    background: var(--navy-2);
+    border-top: 1px solid var(--line);
+    padding: 8px 6px calc(env(safe-area-inset-bottom, 0px) + 8px);
+    gap: 4px;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(16px);
+  }
+
+  .nav-links button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    font-size: 12px;
+    padding: 8px 2px;
+    text-align: center;
+    white-space: nowrap;
+    border-radius: var(--btn-radius);
+  }
+
+  .nav-links button.active {
+    background: rgba(24, 140, 255, 0.15);
+    color: var(--blue-soft);
+    border: 1px solid rgba(24, 140, 255, 0.3);
+  }
+
+  .workspace {
+    padding-bottom: 96px;
+  }
+
+  .site-footer {
+    padding-bottom: 84px;
+  }
+
+  .landing-hero {
+    --u: 1px;
+  }
+
   .hero-inner {
     left: 0;
     right: 0;
@@ -1296,25 +1349,36 @@ button:disabled,
     padding: 0 20px;
     transform: translateY(-47%);
   }
+
   .hero-inner h1 {
     font-size: min(74px, calc((100vw - 44px) / 8.2));
     line-height: 1.04;
     letter-spacing: -0.02em;
     white-space: nowrap;
   }
+
   .hero-inner .hero-lede {
     font-size: clamp(15.5px, 4vw, 16.5px);
     line-height: 1.6;
     max-width: 42ch;
   }
-  .hero-inner .hero-lede br { display: none; }
-  .hero-inner .hero-actions { flex-wrap: wrap; gap: 10px; }
+
+  .hero-inner .hero-lede br {
+    display: none;
+  }
+
+  .hero-inner .hero-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .hero-inner .primary-button,
   .hero-inner .quiet-button {
     height: 42px;
     padding: 0 16px;
     font-size: 14px;
   }
+
   .workspace-heading {
     flex-direction: column;
     align-items: stretch;
