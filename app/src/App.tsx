@@ -33,7 +33,7 @@ function useOfflineReady() {
 }
 
 type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
-const pathViews: View[] = ["ledger", "reserve", "sign", "merchant"];
+const validViews: View[] = ["landing", "connect", "ledger", "reserve", "sign", "merchant"];
 
 function Arrow() {
   return <span aria-hidden="true">↗</span>;
@@ -63,16 +63,17 @@ function Nav({
   onDisconnect,
   publicKey,
   online,
+  onToggleOnline,
 }: {
   view: View;
   setView: (v: View) => void;
   onDisconnect: () => void;
   publicKey: string | null;
   online: boolean;
+  onToggleOnline: () => void;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Close the mobile dropdown if window is resized past mobile breakpoint
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 552) {
@@ -93,9 +94,29 @@ function Nav({
     setMobileMenuOpen(false);
   };
 
+  const statusIndicator = (
+    <button
+      type="button"
+      className={online ? "online-indicator" : "offline-badge"}
+      onClick={onToggleOnline}
+      title={`Currently ${online ? "Online" : "Offline"}. Click to toggle mode.`}
+      aria-label={`Toggle network status, currently ${online ? "Online" : "Offline"}`}
+      style={{
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        font: "inherit",
+        padding: 0,
+      }}
+    >
+      {online ? "Online" : "Offline"}
+    </button>
+  );
+
   return (
     <header className="site-nav">
       <button
+        type="button"
         className="brand"
         onClick={() => handleNavigate("landing")}
         aria-label="PAT home"
@@ -107,24 +128,28 @@ function Nav({
       {/* Desktop Navigation Links */}
       <nav className="nav-links" aria-label="Primary navigation">
         <button
+          type="button"
           className={view === "ledger" ? "active" : ""}
           onClick={() => handleNavigate("ledger")}
         >
           Ledger
         </button>
         <button
+          type="button"
           className={view === "reserve" ? "active" : ""}
           onClick={() => handleNavigate("reserve")}
         >
-          Reserve Funds
+          Reserve
         </button>
         <button
+          type="button"
           className={view === "sign" ? "active" : ""}
           onClick={() => handleNavigate("sign")}
         >
-          Sign payment
+          Sign
         </button>
         <button
+          type="button"
           className={view === "merchant" ? "active" : ""}
           onClick={() => handleNavigate("merchant")}
         >
@@ -137,10 +162,9 @@ function Nav({
         {publicKey ? (
           <>
             <span className="wallet-chip desktop-only">{shortKey(publicKey)}</span>
-            <span className={online ? "online-indicator" : "offline-badge"}>
-              {online ? "Online" : "Offline"}
-            </span>
+            {statusIndicator}
             <button
+              type="button"
               className="text-button desktop-only"
               onClick={handleDisconnect}
             >
@@ -148,11 +172,15 @@ function Nav({
             </button>
           </>
         ) : (
-          <WalletMultiButton />
+          <>
+            {statusIndicator}
+            <WalletMultiButton />
+          </>
         )}
 
-        {/* Mobile Dropdown Trigger (visible <= 552px only) */}
+        {/* Mobile Dropdown Trigger */}
         <button
+          type="button"
           className="mobile-menu-trigger"
           onClick={() => setMobileMenuOpen((prev) => !prev)}
           aria-label="Toggle navigation menu"
@@ -172,24 +200,28 @@ function Nav({
           )}
 
           <button
+            type="button"
             className={`mobile-menu-item ${view === "ledger" ? "active" : ""}`}
             onClick={() => handleNavigate("ledger")}
           >
             Ledger
           </button>
           <button
+            type="button"
             className={`mobile-menu-item ${view === "reserve" ? "active" : ""}`}
             onClick={() => handleNavigate("reserve")}
           >
             Reserve
           </button>
           <button
+            type="button"
             className={`mobile-menu-item ${view === "sign" ? "active" : ""}`}
             onClick={() => handleNavigate("sign")}
           >
             Sign
           </button>
           <button
+            type="button"
             className={`mobile-menu-item ${view === "merchant" ? "active" : ""}`}
             onClick={() => handleNavigate("merchant")}
           >
@@ -200,6 +232,7 @@ function Nav({
             <>
               <div className="mobile-dropdown-divider" />
               <button
+                type="button"
                 className="mobile-menu-item disconnect-item"
                 onClick={handleDisconnect}
               >
@@ -324,13 +357,21 @@ function Connect() {
 
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
-  const online = useOnline();
+  const { online: systemOnline } = useOnline();
+  const [manualOnline, setManualOnline] = useState<boolean | null>(null);
   const offlineReady = useOfflineReady();
 
-  // Initialize view from URL path instead of URL hash
+  // If the user manually toggled the mode, honor manualOnline; otherwise follow browser network state
+  const online = manualOnline ?? systemOnline;
+
+  const toggleOnline = useCallback(() => {
+    setManualOnline((prev) => !(prev ?? systemOnline));
+  }, [systemOnline]);
+
+  // Initialize view from URL path
   const [view, setViewState] = useState<View>(() => {
     const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
-    return pathViews.includes(candidate) ? candidate : "landing";
+    return validViews.includes(candidate) ? candidate : "landing";
   });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
 
@@ -355,20 +396,21 @@ function AppContent() {
   useEffect(() => {
     const handlePopState = () => {
       const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
-      setViewState(pathViews.includes(candidate) ? candidate : "landing");
+      setViewState(validViews.includes(candidate) ? candidate : "landing");
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Guard: if no wallet is connected and trying to access app paths, route to /connect
   useEffect(() => {
-    if (!publicKey) {
-      if (view !== "landing" && view !== "connect") setView("landing");
-      return;
+    if (!publicKey && view !== "landing" && view !== "connect") {
+      setView("connect");
     }
   }, [publicKey, view, setView]);
 
+  // Once connected, transition from connect page to ledger/reserve
   useEffect(() => {
     if (!publicKey) return;
     void listLedgers(publicKey.toBase58()).then((items) => {
@@ -379,6 +421,7 @@ function AppContent() {
     });
   }, [publicKey, view, setView]);
 
+  // Determine view to render: fall back to "connect" if unauthenticated
   const guardedView =
     publicKey || view === "landing" || view === "connect" ? view : "connect";
 
@@ -471,6 +514,7 @@ function AppContent() {
         onDisconnect={disconnectWallet}
         publicKey={publicKey?.toBase58() ?? null}
         online={online}
+        onToggleOnline={toggleOnline}
       />
       {offlineReady && (
         <div className="offline-ready" role="status">
