@@ -35,10 +35,6 @@ function useOfflineReady() {
 type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
 const hashViews: View[] = ["ledger", "reserve", "sign", "merchant"];
 
-function Arrow() {
-  return <span aria-hidden="true">↗</span>;
-}
-
 function WalletGate() {
   const { wallets } = useWallet();
   const installed =
