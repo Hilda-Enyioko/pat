@@ -284,7 +284,7 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
@@ -322,6 +322,10 @@ export function MerchantSettlement() {
     if (!parsed || !signature) return;
     if (!publicKey) {
       setStatus("Connect the merchant wallet to settle.");
+      return;
+    }
+    if (!signTransaction) {
+      setStatus("Connected wallet does not support signing transactions.");
       return;
     }
 
@@ -406,12 +410,16 @@ export function MerchantSettlement() {
       }
 
       // -------------------------------------------------------------------------
-      // 5. Wallet Signing & Broadcast
+      // 5. Direct Signing & Broadcast via connection.sendRawTransaction
       // -------------------------------------------------------------------------
       setStatus("Approve transaction in your wallet…");
-      const tx = await sendTransaction(transaction, connection, {
+      const signedTx = await signTransaction(transaction);
+
+      setStatus("Broadcasting to devnet…");
+      const rawTx = signedTx.serialize();
+      const tx = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: true,
         preflightCommitment: "confirmed",
-        skipPreflight: false,
       });
 
       setStatus("Confirming on-chain…");
@@ -422,12 +430,34 @@ export function MerchantSettlement() {
         "confirmed"
       );
 
+      // -------------------------------------------------------------------------
+      // 6. Record Settled Entry into Local Ledger History
+      // -------------------------------------------------------------------------
+      const hexPaymentId = Array.from(parsed.paymentId)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      try {
+        await addHistoryEntry(parsed.reservation.toBase58(), {
+          paymentId: hexPaymentId,
+          merchant: publicKey.toBase58(),
+          amount: parsed.amount.toString(),
+          createdAt: Number(parsed.createdAt),
+          expiresAt: Number(parsed.expiresAt),
+          sequence: parsed.sequence,
+          memo: `Settled tx: ${tx.slice(0, 8)}…`,
+          status: "SETTLED",
+          payload: raw || undefined,
+        });
+      } catch (historyErr) {
+        console.warn("Could not record settled payment into local ledger:", historyErr);
+      }
+
       setStatus(`Payment settled ✔  Tx: ${tx.slice(0, 8)}…`);
     } catch (e: any) {
       console.group("🛑 [PAT Settlement] Detailed Error Diagnostics");
       console.error("Error Object:", e);
 
-      // Inspect RPC simulation error logs if embedded on SendTransactionError
       if (e.logs || e.message?.includes("Transaction simulation failed")) {
         const logs = e.logs || (typeof e.getLogs === "function" ? await e.getLogs(connection) : null);
         if (logs) {
@@ -448,7 +478,7 @@ export function MerchantSettlement() {
     }
   }
 
-  const isError = status.startsWith("Invalid") || status.startsWith("Camera unavailable");
+  const isError = status.startsWith("Invalid") || status.startsWith("Camera unavailable") || status.startsWith("Connect") || status.startsWith("Connected wallet");
   const isValid = status.startsWith("Signature valid") || status.startsWith("Payment settled");
 
   return (
