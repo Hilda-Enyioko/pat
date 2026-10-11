@@ -324,19 +324,125 @@ export function MerchantSettlement() {
       setStatus("Connect the merchant wallet to settle.");
       return;
     }
+
     setSettling(true);
-    setStatus("Submitting settlement…");
+    setStatus("Checking balance and preparing preflight logs…");
+
     try {
-      const instructions = await buildSettleIx({ settler: publicKey, intent: parsed, signature });
-      const transaction = new Transaction().add(...instructions);
+      // -------------------------------------------------------------------------
+      // 1. Balance & Preflight Readiness
+      // -------------------------------------------------------------------------
+      const balance = await connection.getBalance(publicKey, "confirmed");
+      console.group("[PAT Settlement] Preflight Context");
+      console.log("Settler (Merchant):", publicKey.toBase58());
+      console.log(`Settler Balance: ${balance / 1e9} SOL (${balance} lamports)`);
+      console.log("Payer:", parsed.payer.toBase58());
+      console.log("Reservation Account:", parsed.reservation.toBase58());
+      console.log("Amount (Lamports):", parsed.amount.toString());
+      console.log("Sequence:", parsed.sequence);
+      console.log("Signature (base58):", bs58.encode(signature));
+      console.groupEnd();
+
+      if (balance === 0) {
+        throw new Error(
+          "Merchant wallet has 0 SOL. Request an airdrop on Devnet to pay the transaction fee."
+        );
+      }
+
+      // -------------------------------------------------------------------------
+      // 2. Build Instructions & Log Structure
+      // -------------------------------------------------------------------------
+      setStatus("Building settlement instructions…");
+      const instructions = await buildSettleIx({
+        settler: publicKey,
+        intent: parsed,
+        signature,
+      });
+
+      console.group("📋 [PAT Settlement] Instruction Breakdown");
+      instructions.forEach((ix, index) => {
+        console.log(`Instruction #${index + 1}: Program ID -> ${ix.programId.toBase58()}`);
+        console.table(
+          ix.keys.map((k) => ({
+            pubkey: k.pubkey.toBase58(),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          }))
+        );
+      });
+      console.groupEnd();
+
+      // -------------------------------------------------------------------------
+      // 3. Assemble Transaction
+      // -------------------------------------------------------------------------
       const latest = await connection.getLatestBlockhash("confirmed");
-      transaction.recentBlockhash = latest.blockhash;
-      transaction.feePayer = publicKey;
-      const tx = await sendTransaction(transaction, connection);
-      await connection.confirmTransaction({ signature: tx, ...latest }, "confirmed");
-      setStatus(`Payment settled. Transaction ${tx.slice(0, 8)}…`);
-    } catch (e) {
-      setStatus(mapProgramError(e));
+      const transaction = new Transaction({
+        feePayer: publicKey,
+        recentBlockhash: latest.blockhash,
+      }).add(...instructions);
+
+      // -------------------------------------------------------------------------
+      // 4. Preflight Simulation & Diagnostic Logging
+      // -------------------------------------------------------------------------
+      setStatus("Simulating transaction on-chain…");
+      const sim = await connection.simulateTransaction(transaction, undefined, true);
+
+      console.group("🔬 [PAT Settlement] Simulation Result");
+      console.log("Units Consumed:", sim.value.unitsConsumed);
+      if (sim.value.logs && sim.value.logs.length > 0) {
+        console.log("Execution Logs:");
+        sim.value.logs.forEach((log) => console.log(`  > ${log}`));
+      }
+      console.groupEnd();
+
+      if (sim.value.err) {
+        console.error("❌ Simulation Failed:", sim.value.err);
+        if (sim.value.logs) {
+          console.error("Logs leading to failure:\n" + sim.value.logs.join("\n"));
+        }
+        throw new Error(
+          `Simulation failed: ${JSON.stringify(sim.value.err)}. Check console for full program logs.`
+        );
+      }
+
+      // -------------------------------------------------------------------------
+      // 5. Wallet Signing & Broadcast
+      // -------------------------------------------------------------------------
+      setStatus("Approve transaction in your wallet…");
+      const tx = await sendTransaction(transaction, connection, {
+        preflightCommitment: "confirmed",
+        skipPreflight: false,
+      });
+
+      setStatus("Confirming on-chain…");
+      console.log(`Broadcasted Tx Signature: https://explorer.solana.com/tx/${tx}?cluster=devnet`);
+
+      await connection.confirmTransaction(
+        { signature: tx, ...latest },
+        "confirmed"
+      );
+
+      setStatus(`Payment settled ✔  Tx: ${tx.slice(0, 8)}…`);
+    } catch (e: any) {
+      console.group("🛑 [PAT Settlement] Detailed Error Diagnostics");
+      console.error("Error Object:", e);
+
+      // Inspect RPC simulation error logs if embedded on SendTransactionError
+      if (e.logs || e.message?.includes("Transaction simulation failed")) {
+        const logs = e.logs || (typeof e.getLogs === "function" ? await e.getLogs(connection) : null);
+        if (logs) {
+          console.error("Program Logs from caught error:\n", logs.join("\n"));
+        }
+      }
+      console.groupEnd();
+
+      setStatus(
+        typeof mapProgramError === "function"
+          ? mapProgramError(e)
+          : e instanceof Error
+          ? e.message
+          : String(e)
+      );
     } finally {
       setSettling(false);
     }
