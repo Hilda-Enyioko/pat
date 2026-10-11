@@ -1,5 +1,6 @@
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import "./App.css";
+import "@solana/wallet-adapter-react-ui/styles.css";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -127,24 +128,79 @@ function Nav({
 function Landing({ onStart }: { onStart: () => void }) {
   return (
     <main className="landing">
-      <section className="landing-hero">
-        <div className="globe-bg" role="img" aria-label="Spinning globe rendered as a blue dot matrix with payment arcs, against a starfield"><Globe /></div>
+      <section className="landing-hero anim go">
+        <div
+          className="globe-bg"
+          role="img"
+          aria-label="Spinning globe rendered as a blue dot matrix with payment arcs, against a starfield"
+        >
+          <Globe />
+        </div>
         <div className="hero-vignette" />
         <div className="hero-inner">
-          <h1><span className="ln"><span className="ln-i">Reserve online.</span></span><span className="ln"><span className="ln-i"><em>Pay offline.</em></span></span></h1>
-          <p className="hero-lede">Turn a connected wallet into a bounded offline allowance on Solana,<br />sign payments the moment the network disappears,<br />and let merchants settle when they reconnect.</p>
+          <h1>
+            <span className="ln">
+              <span className="ln-i">Reserve online.</span>
+            </span>
+            <span className="ln">
+              <span className="ln-i">
+                <em>Pay offline.</em>
+              </span>
+            </span>
+          </h1>
+          <p className="hero-lede">
+            Turn a connected wallet into a bounded offline allowance on Solana,
+            <br />
+            sign payments the moment the network disappears,
+            <br />
+            and let merchants settle when they reconnect.
+          </p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={onStart}>Connect wallet <Arrow /></button>
-            <button className="quiet-button" onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>How it works <span>↓</span></button>
+            <button className="primary-button" onClick={onStart}>
+              Connect wallet
+            </button>
+            <button
+              className="quiet-button"
+              onClick={() =>
+                document.getElementById("how-it-works")?.scrollIntoView({
+                  behavior: "smooth",
+                })
+              }
+            >
+              How it works <span>↓</span>
+            </button>
           </div>
-          <div className="trust-line"><span className="online-indicator">● live on {CLUSTER}</span></div>
+          <div className="trust-line">
+            <span className="online-indicator">● live on {CLUSTER}</span>
+          </div>
         </div>
-        <button className="scroll-cue" onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>Scroll <span>⌄</span></button>
+        <button
+          className="scroll-cue"
+          onClick={() =>
+            document.getElementById("how-it-works")?.scrollIntoView({
+              behavior: "smooth",
+            })
+          }
+        >
+          Scroll <span>⌄</span>
+        </button>
       </section>
       <section id="how-it-works" className="feature-strip page-shell">
-        <div><span>01</span><h2>Reserve online</h2><p>Set a bounded allowance before connectivity fails.</p></div>
-        <div><span>02</span><h2>Sign offline</h2><p>Your wallet authorizes each payment without a network.</p></div>
-        <div><span>03</span><h2>Merchant settles</h2><p>Payments become verifiable proof when you reconnect.</p></div>
+        <div>
+          <span>01</span>
+          <h2>Reserve online</h2>
+          <p>Set a bounded allowance before connectivity fails.</p>
+        </div>
+        <div>
+          <span>02</span>
+          <h2>Sign offline</h2>
+          <p>Your wallet authorizes each payment without a network.</p>
+        </div>
+        <div>
+          <span>03</span>
+          <h2>Merchant settles</h2>
+          <p>Payments become verifiable proof when you reconnect.</p>
+        </div>
       </section>
     </main>
   );
@@ -252,7 +308,7 @@ function AppContent() {
             </p>
           </div>
           <button className="primary-button" onClick={() => setView("reserve")}>
-            Reserve funds <Arrow />
+            Reserve funds
           </button>
         </div>
         {ledgers.length === 0 ? (
@@ -263,7 +319,7 @@ function AppContent() {
               here.
             </p>
             <button className="primary-button" onClick={() => setView("reserve")}>
-              Create reservation <Arrow />
+              Create reservation
             </button>
           </div>
         ) : (

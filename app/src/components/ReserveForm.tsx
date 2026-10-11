@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Transaction } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { buildReserveIx, chainNow, fetchReservation, PAYMENT_SPACE, RESERVATION_SPACE } from "../lib/pat";
+import {
+  buildReserveIx,
+  chainNow,
+  fetchReservation,
+  PAYMENT_SPACE,
+  RESERVATION_SPACE,
+} from "../lib/pat";
 import { initLedgerIfAbsent } from "../lib/ledger";
 import { lamportsToSol, solToLamports } from "../lib/format";
 
@@ -30,7 +36,9 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
   try {
     if (rents) {
       total = lamportsToSol(
-        solToLamports(capacitySol) + rents.reservation + rents.payment * BigInt(Number(maxPayments) || 0)
+        solToLamports(capacitySol) +
+          rents.reservation +
+          rents.payment * BigInt(Number(maxPayments) || 0)
       );
     }
   } catch {
@@ -56,9 +64,15 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
       const perPaymentCap = solToLamports(capSol);
       const max = Number(maxPayments);
 
-      if (capacity <= 0n || perPaymentCap <= 0n) throw new Error("Amounts must be greater than zero");
-      if (perPaymentCap > capacity) throw new Error("Per-payment cap cannot exceed capacity");
-      if (!Number.isInteger(max) || max <= 0) throw new Error("Max payments must be a positive whole number");
+      if (capacity <= 0n || perPaymentCap <= 0n) {
+        throw new Error("Amounts must be greater than zero");
+      }
+      if (perPaymentCap > capacity) {
+        throw new Error("Per-payment cap cannot exceed capacity");
+      }
+      if (!Number.isInteger(max) || max <= 0) {
+        throw new Error("Max payments must be a positive whole number");
+      }
 
       const now = await chainNow(connection);
       const expiresAt = BigInt(now + Math.round(hoursNumber * 3600));
@@ -122,77 +136,147 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     }
   }
 
+  const isErrorStatus = status?.startsWith("Failed") || status?.startsWith("Please fix");
+  const isSuccessStatus = status?.startsWith("Reserved") || status?.startsWith("Airdrop confirmed");
+
   return (
-    <section className="intent-card">
-      <h2 style={{ margin: "0 0 10px 0", fontSize: "20px" }}>Reserve (while online)</h2>
+    <section className="intent-card reserve-card">
+      <header className="card-header">
+        <div className="card-title-group">
+          <h3>Reserve (while online)</h3>
+        </div>
+      </header>
 
-      <label>
-        Offline capacity (SOL)
-        <input
-          value={capacitySol}
-          onChange={(e) => setCapacitySol(e.target.value)}
-          placeholder="1.0"
-        />
-      </label>
-
-      <label>
-        Per-payment cap (SOL)
-        <input
-          value={capSol}
-          onChange={(e) => setCapSol(e.target.value)}
-          placeholder="0.5"
-        />
-      </label>
-
-      <label>
-        Spending window (hours)
-        <input
-          value={hours}
-          onChange={(e) => {
-            setHours(e.target.value);
-            setHoursError(null);
-          }}
-          aria-invalid={Boolean(hoursError)}
-        />
-        {hoursError && <span className="field-error">{hoursError}</span>}
-      </label>
-
-      <label>
-        Max payments (prepays receipt rent)
-        <input
-          value={maxPayments}
-          onChange={(e) => setMaxPayments(e.target.value)}
-        />
-      </label>
-
-      {total && (
-        <p className="muted" style={{ marginTop: "16px" }}>
-          Wallet pays about {total} SOL (capacity + rent reserve + account rent) plus ~0.00001 SOL network fee. Unspent funds return on withdraw.
-        </p>
-      )}
-
-      <button
-        className="primary-button full"
-        style={{ marginTop: "24px" }}
-        onClick={onReserve}
-        disabled={!publicKey || busy}
+      <form
+        className="form-stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onReserve();
+        }}
       >
-        {busy ? "Working…" : "Reserve funds"}
-      </button>
+        <div className="field-grid">
+          <div className="field-group">
+            <label htmlFor="capacitySol" className="field-label">
+              Offline capacity (SOL)
+            </label>
+            <input
+              id="capacitySol"
+              className="text-input"
+              value={capacitySol}
+              onChange={(e) => setCapacitySol(e.target.value)}
+              placeholder="1.0"
+              disabled={busy}
+            />
+          </div>
 
-      <div className="devnet-helper">
-        <p>Need devnet SOL? <a href="https://faucet.solana.com" target="_blank" rel="noreferrer">Open the Solana faucet</a>.</p>
-        <button type="button" onClick={requestAirdrop} disabled={!publicKey || busy}>
-          Airdrop 1 SOL (devnet)
+          <div className="field-group">
+            <label htmlFor="capSol" className="field-label">
+              Per-payment cap (SOL)
+            </label>
+            <input
+              id="capSol"
+              className="text-input"
+              value={capSol}
+              onChange={(e) => setCapSol(e.target.value)}
+              placeholder="0.5"
+              disabled={busy}
+            />
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="spendingHours" className="field-label">
+              Spending window (hours)
+            </label>
+            <input
+              id="spendingHours"
+              className={`text-input ${hoursError ? "input-error" : ""}`}
+              value={hours}
+              onChange={(e) => {
+                setHours(e.target.value);
+                setHoursError(null);
+              }}
+              aria-invalid={Boolean(hoursError)}
+              disabled={busy}
+            />
+            {hoursError && <span className="field-error">{hoursError}</span>}
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="maxPayments" className="field-label">
+              Max payments (prepays receipt rent)
+            </label>
+            <input
+              id="maxPayments"
+              className="text-input"
+              value={maxPayments}
+              onChange={(e) => setMaxPayments(e.target.value)}
+              disabled={busy}
+            />
+          </div>
+        </div>
+
+        {total && (
+          <div className="summary-banner">
+            <p className="muted">
+              Wallet pays about <strong className="mono-accent">{total} SOL</strong> (capacity + rent reserve + account rent) plus ~0.00001 SOL network fee. Unspent funds return on withdraw.
+            </p>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          className="primary-button full-width"
+          disabled={!publicKey || busy}
+        >
+          {busy ? "Working…" : "Reserve funds"}
         </button>
-      </div>
 
-      <p className="muted" style={{ marginTop: "16px" }}>
-        Each intent expires within 1 hour and never outlives the spending window.
-      </p>
+        <div className="devnet-helper">
+          <p>
+            Need devnet SOL?{" "}
+            <a
+              href="https://faucet.solana.com"
+              target="_blank"
+              rel="noreferrer"
+              className="link-accent"
+            >
+              Open the Solana faucet
+            </a>
+          </p>
+          <button
+            type="button"
+            className="quiet-button airdrop-btn"
+            onClick={requestAirdrop}
+            disabled={!publicKey || busy}
+          >
+            Airdrop 1 SOL (devnet)
+          </button>
+        </div>
 
-      {!publicKey && <p className="muted">Connect a wallet first.</p>}
-      {status && <p className="status-message" style={{ marginTop: "12px" }}>{status}</p>}
+        <p className="muted policy-note">
+          Each intent expires within 1 hour and never outlives the spending window.
+        </p>
+
+        {!publicKey && (
+          <p className="status-message status-warning">
+            Connect a wallet first.
+          </p>
+        )}
+
+        {status && (
+          <p
+            className={`status-message ${
+              isErrorStatus
+                ? "status-error"
+                : isSuccessStatus
+                ? "status-success"
+                : ""
+            }`}
+          >
+            {status}
+          </p>
+        )}
+      </form>
     </section>
   );
 }
