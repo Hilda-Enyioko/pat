@@ -11,6 +11,7 @@ import { listLedgers, type OfflineLedger } from "./lib/ledger";
 import { shortKey } from "./lib/format";
 import { useOnline } from "./hooks/useOnline";
 import { CLUSTER, RPC_URL } from "./config";
+import { Globe } from "./components/Globe";
 
 const logoUrl = "/logo.png";
 
@@ -125,103 +126,25 @@ function Nav({
 
 function Landing({ onStart }: { onStart: () => void }) {
   return (
-    <main className="landing page-shell">
-      <div className="hero-orb orb-one" />
-      <div className="hero-orb orb-two" />
-      <section className="hero-copy">
-        <p className="eyebrow">
-          <span className="eyebrow-dot" /> Offline payments, secured on Solana
-        </p>
-        <h1>
-          Reserve online.
-          <br />
-          <em>Pay offline.</em>
-        </h1>
-        <p className="hero-lede">
-          PAT turns a connected wallet into a bounded offline allowance. Sign a
-          payment when the network disappears, then let the merchant settle when
-          they reconnect.
-        </p>
-        <div className="hero-actions">
-          <button className="primary-button" onClick={onStart}>
-            Connect wallet <Arrow />
-          </button>
-          <button
-            className="quiet-button"
-            onClick={() =>
-              document.getElementById("how-it-works")?.scrollIntoView({
-                behavior: "smooth",
-              })
-            }
-          >
-            How it works <span>↓</span>
-          </button>
+    <main className="landing">
+      <section className="landing-hero">
+        <div className="globe-bg" role="img" aria-label="Spinning globe rendered as a blue dot matrix with payment arcs, against a starfield"><Globe /></div>
+        <div className="hero-vignette" />
+        <div className="hero-inner">
+          <h1><span className="ln"><span className="ln-i">Reserve online.</span></span><span className="ln"><span className="ln-i"><em>Pay offline.</em></span></span></h1>
+          <p className="hero-lede">Turn a connected wallet into a bounded offline allowance on Solana,<br />sign payments the moment the network disappears,<br />and let merchants settle when they reconnect.</p>
+          <div className="hero-actions">
+            <button className="primary-button" onClick={onStart}>Connect wallet <Arrow /></button>
+            <button className="quiet-button" onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>How it works <span>↓</span></button>
+          </div>
+          <div className="trust-line"><span className="online-indicator">● live on {CLUSTER}</span></div>
         </div>
-        <div className="trust-line">
-          <span>Built for the moments connectivity fails</span>
-          <span className="line" />
-          <span className="online-indicator">● live on {CLUSTER}</span>
-        </div>
+        <button className="scroll-cue" onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}>Scroll <span>⌄</span></button>
       </section>
-      <section className="hero-card" aria-label="Illustrative PAT payment flow">
-        <div className="card-glow" />
-        <div className="flow-header">
-          <span className="mini-label">PAT / EXAMPLE</span>
-          <span className="status-dot">● illustrative</span>
-        </div>
-        <div className="balance">
-          0.80 <small>SOL available offline</small>
-        </div>
-        <div className="flow-bar">
-          <span style={{ width: "68%" }} />
-        </div>
-        <div className="flow-meta">
-          <span>0.20 SOL committed</span>
-          <span>1.00 SOL reserved</span>
-        </div>
-        <div className="flow-steps">
-          <div>
-            <b>01</b>
-            <span>Reserve funds</span>
-            <i>Online</i>
-          </div>
-          <div className="flow-connector" />
-          <div>
-            <b>02</b>
-            <span>Sign intent</span>
-            <i>Offline</i>
-          </div>
-          <div className="flow-connector" />
-          <div>
-            <b>03</b>
-            <span>Settle payment</span>
-            <i>Merchant online</i>
-          </div>
-        </div>
-        <div className="card-footer">
-          <span>Example reservation</span>
-          <strong>8f3a…d921</strong>
-          <span className="verified">illustrative</span>
-        </div>
-      </section>
-      <section id="how-it-works" className="feature-strip">
-        <div>
-          <span>01</span>
-          <h2>Bounded by design</h2>
-          <p>
-            Set a total allowance and per-payment cap before you go offline.
-          </p>
-        </div>
-        <div>
-          <span>02</span>
-          <h2>Your keys, always</h2>
-          <p>Only your wallet can authorize a payment intent.</p>
-        </div>
-        <div>
-          <span>03</span>
-          <h2>Proof on-chain</h2>
-          <p>Merchants settle later. Confirmed payments stay verifiable.</p>
-        </div>
+      <section id="how-it-works" className="feature-strip page-shell">
+        <div><span>01</span><h2>Reserve online</h2><p>Set a bounded allowance before connectivity fails.</p></div>
+        <div><span>02</span><h2>Sign offline</h2><p>Your wallet authorizes each payment without a network.</p></div>
+        <div><span>03</span><h2>Merchant settles</h2><p>Payments become verifiable proof when you reconnect.</p></div>
       </section>
     </main>
   );

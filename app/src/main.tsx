@@ -11,6 +11,9 @@ import "@fontsource/dm-mono/500.css";
 import { registerSW } from "virtual:pwa-register";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./index.css";
+import { armEntrance } from "./lib/entrance";
+
+armEntrance();
 
 registerSW({ onOfflineReady: () => window.dispatchEvent(new Event("pat:offline-ready")) });
 
