@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Boxes, Globe2, Menu, MoveRight, Wifi, WifiOff, X } from "lucide-react";
 import { CLUSTER, PROGRAM_ID, RPC_URL } from "@/config";
 import { shortKey } from "@/lib/format";
@@ -105,26 +105,6 @@ export function Header({
 
       <div className="mrow">
         <Logo onClick={() => go("landing")} />
-        <nav className="mnav" aria-label="Main navigation">
-          {APP_VIEWS.map(({ view: v, label }, i) => (
-            <Fragment key={v}>
-              <button
-                type="button"
-                className={i === 0 ? "lead" : undefined}
-                aria-current={view === v ? "page" : undefined}
-                onClick={() => go(v)}
-              >
-                {label}
-                {i === 0 && (
-                  <span className="dot-circ" aria-hidden="true">
-                    <MoveRight />
-                  </span>
-                )}
-              </button>
-              {i === 0 && <span className="sep" aria-hidden="true" />}
-            </Fragment>
-          ))}
-        </nav>
         <button
           ref={buttonRef}
           type="button"
