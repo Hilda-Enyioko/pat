@@ -1,5 +1,7 @@
 # PAT: Primitive Airborne Transaction
 
+~ Dedicated to Patricia Ogugua Enyioko.
+
 **Reserve online. Pay offline. Settle through the merchant.**
 
 PAT is a self-custodial payment protocol on Solana for temporary connectivity loss. A payer locks a bounded spending allowance on-chain while online. Later, with no internet at all, the payer signs a payment authorization against that allowance and hands it to a merchant locally (for example as a QR code). The merchant, who only needs connectivity on their own side, submits it to the PAT program, which verifies the signature and moves funds from the reservation to the merchant.
@@ -10,6 +12,7 @@ PAT is a self-custodial payment protocol on Solana for temporary connectivity lo
 | Stack | Solana, Rust, Anchor, ed25519 precompile, TypeScript |
 | Client | React PWA (in progress) |
 | Author | Hilda Enyioko |
+| Contributor | Chukwu Pascal
 
 ---
 
@@ -321,9 +324,7 @@ PAT's specific contribution is the combination: a payer pre-funds a generic on-c
 
 ## Project resources
 
-- Pitch video: *coming soon* (placeholder: `https://example.com/pat-pitch`)
-- Live demo: *coming soon* (placeholder: `https://pat-demo.example.com`)
-- Demo video: *coming soon* (placeholder: `https://example.com/pat-demo`)
+- Live App: [pat-sol](pat-sol.vercel.app)
 
 The demo will show: reserving an allowance, going offline, signing a payment, handing the QR to a merchant, the **Offline Accepted** state, the merchant settling on-chain, the **Confirmed** state, and the offline-balance gate refusing an overspend.
 
