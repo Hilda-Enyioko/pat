@@ -79,31 +79,18 @@ html.tab-l {
   .util .p1 { width: 289px; }
   .util .vr { position: absolute; left: 313px; top: 9px; bottom: 9px; width: 1px; background: var(--nav-rule); }
   .util .p2 { margin-left: 24px; }
-  .unav {
-    display: flex;
+  .util .net {
+    display: inline-flex;
     align-items: center;
-    gap: 26px;
+    gap: 7px;
     margin-left: auto;
-    margin-right: 22px;
-    font-size: 14px;
+    margin-right: 18px;
+    font-size: 13px;
     font-weight: 500;
+    color: var(--nav-muted);
   }
-  .unav a,
-  .unav button {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--nav-fg);
-    text-decoration: none;
-    text-align: left;
-    line-height: 1.02;
-    cursor: pointer;
-  }
-  .unav a:hover,
-  .unav button:hover { color: var(--nav-muted); }
-  .unav .net { display: inline-flex; align-items: center; gap: 7px; color: var(--nav-muted); }
-  .unav .net i { width: 7px; height: 7px; border-radius: 50%; background: #3fb36b; }
-  .unav .net[data-offline] i { background: var(--red); }
+  .util .net i { width: 7px; height: 7px; border-radius: 50%; background: #3fb36b; }
+  .util .net[data-offline] i { background: var(--red); }
   .srch {
     display: grid;
     place-items: center;
@@ -249,8 +236,66 @@ html.tab-l {
     box-shadow: 0 0 0 1px var(--nav-line), 0 30px 60px -30px rgba(15, 15, 14, 0.45);
   }
   .hdr[data-open] .panel { display: block; }
-  html.mob .panel,
   html.tab-p .panel { left: 0; right: 0; width: auto; max-height: calc(100svh - var(--hh) - 28px); }
+
+  /* Phones: the menu is a drawer from the right covering 70% of the screen;
+     the uncovered strip is blurred while it is out. */
+  html.mob .panel {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    width: 70vw;
+    max-height: none;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) 10px;
+    border-radius: 22px 0 0 22px;
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.5s;
+    --m-ph: 13px; --m-p: clamp(20px, 6.4vw, 28px);
+  }
+  html.mob .hdr[data-open] .panel { display: flex; transform: none; visibility: visible; transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s; }
+  html.mob .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: block;
+    background: rgba(15, 15, 14, 0.18);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+  }
+  html.mob .hdr[data-open] .scrim { opacity: 1; pointer-events: auto; }
+  html.mob .phead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: calc(var(--hh) - 10px);
+    padding: 0 2px 6px 12px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .pclose {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--stone);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .pclose svg { width: 20px; height: 20px; }
+  html.mob .pmeta { grid-template-columns: 1fr; }
+  html.mob .pwallet { margin-top: auto; }
+  html.mob.menu-open,
+  html.mob.menu-open body { overflow: hidden; }
+  .scrim,
+  .phead { display: none; }
   .pnav { display: flex; flex-direction: column; }
   .pnav button {
     display: flex;
@@ -542,9 +587,6 @@ html.tab-l {
   html.tab .mnav { display: none; }
   html.tab .menu-btn { margin-left: auto; }
   html.tab .cta { margin-left: 24px; }
-  @media (max-width: 1040px) {
-    html.tab .unav .opt { display: none; }
-  }
   @media (max-width: 760px) {
     html.tab .util .p2,
     html.tab .util .vr { display: none; }

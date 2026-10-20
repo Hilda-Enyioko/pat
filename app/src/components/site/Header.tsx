@@ -45,11 +45,17 @@ export function Header({
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onPointer);
-    if (openedByKey.current) headerRef.current?.querySelector<HTMLElement>(".panel button, .panel a")?.focus();
+    if (openedByKey.current) headerRef.current?.querySelector<HTMLElement>(".pnav button")?.focus();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer);
     };
+  }, [open]);
+
+  // Lets the page behind the phone drawer stop scrolling while it is open.
+  useEffect(() => {
+    document.documentElement.classList.toggle("menu-open", open);
+    return () => document.documentElement.classList.remove("menu-open");
   }, [open]);
 
   const go = (next: View) => {
@@ -81,24 +87,10 @@ export function Header({
             {shortKey(programId)}
           </span>
         </a>
-        <nav className="unav" aria-label="Useful links">
-          <button type="button" onClick={onHowItWorks}>How it works</button>
-          <a className="opt" href={FAUCET_URL} target="_blank" rel="noreferrer">Faucet</a>
-          <a className="opt" href={explorerUrl} target="_blank" rel="noreferrer">
-            Program
-            <br />
-            explorer
-          </a>
-          <a className="opt" href={SOURCE_URL} target="_blank" rel="noreferrer">
-            Source
-            <br />
-            code
-          </a>
-          <span className="net" data-offline={!online || undefined}>
-            <i aria-hidden="true" />
-            {netLabel}
-          </span>
-        </nav>
+        <span className="net" data-offline={!online || undefined}>
+          <i aria-hidden="true" />
+          {netLabel}
+        </span>
         <button
           type="button"
           className="srch"
@@ -156,7 +148,22 @@ export function Header({
         </div>
       </div>
 
+      <div className="scrim" aria-hidden="true" onClick={() => setOpen(false)} />
       <div className="panel" id="site-menu">
+        <div className="phead">
+          <span>Menu</span>
+          <button
+            type="button"
+            className="pclose"
+            aria-label="Close menu"
+            onClick={() => {
+              setOpen(false);
+              buttonRef.current?.focus();
+            }}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
         <nav className="pnav" aria-label="Main navigation">
           {APP_VIEWS.map(({ view: v, label }, i) => (
             <button
