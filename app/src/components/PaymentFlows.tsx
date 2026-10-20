@@ -422,13 +422,11 @@ export function MerchantSettlement() {
       console.groupEnd();
 
       if (sim.value.err) {
-        console.error("❌ Simulation Failed:", sim.value.err);
-        if (sim.value.logs) {
-          console.error("Logs leading to failure:\n" + sim.value.logs.join("\n"));
-        }
-        throw new Error(
+        const simError = new Error(
           `Simulation failed: ${JSON.stringify(sim.value.err)}. Check console for full program logs.`
-        );
+        ) as Error & { logs?: string[] };
+        simError.logs = sim.value.logs ?? undefined;
+        throw simError;
       }
 
       // -------------------------------------------------------------------------

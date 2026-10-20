@@ -76,18 +76,58 @@ export async function buildSettleIx({ settler, intent, signature }: { settler: P
   return [ed25519, settle];
 }
 
+const PROGRAM_ERRORS: Record<string, string> = {
+  MerchantMismatch: "Merchant account does not match the signed payment.",
+  PayerMismatch: "The signed payer is not the owner of this reservation.",
+  ReservationMismatch: "The signed payment names a different reservation.",
+  UnsupportedVersion: "Unsupported payment version. Ask the customer to update the app.",
+  WrongCluster: "This payment was signed for a different Solana cluster.",
+  ZeroAmount: "The payment amount must be greater than zero.",
+  InvalidIntentWindow:
+    "Invalid intent window; the customer's device clock may have been off. Ask for a new payment.",
+  InvalidLedgerClaim: "The payment's running total is invalid. Ask the customer for a new payment.",
+  ExceedsPerPaymentCap: "The payment exceeds the reservation per-payment cap.",
+  InsufficientCapacity: "The reservation has insufficient remaining capacity.",
+  SettleWindowClosed: "The settlement deadline has passed.",
+  RentReserveExhausted: "The reservation cannot cover payment account rent.",
+  LamportInvariantBroken: "The reservation balance invariant was violated.",
+  Overflow: "Arithmetic overflow while settling.",
+  NotReservationOwner: "Only the wallet that created this reservation can withdraw it.",
+  WithdrawTooEarly: "This reservation is still in its settlement window.",
+  InvalidCapacity: "Capacity must be greater than zero.",
+  InvalidPerPaymentCap: "Per-payment cap must be greater than zero and no more than capacity.",
+  InvalidReservationWindow: "The spending window must end in the future.",
+  InvalidMaxPayments: "Max payments is outside the allowed range.",
+  AccountNotInitialized: "The reservation no longer exists. It may have been withdrawn.",
+};
+
+function collectLogs(err: unknown, logs?: string[]): string[] {
+  const attached =
+    typeof err === "object" && err !== null && Array.isArray((err as { logs?: unknown }).logs)
+      ? ((err as { logs: string[] }).logs)
+      : [];
+  return [...(logs ?? []), ...attached];
+}
+
 export function mapProgramError(err: unknown, logs?: string[]): string {
-  const text = `${err instanceof Error ? err.message : String(err)} ${logs?.join(" ") ?? ""}`.toLowerCase();
-  if (text.includes("already in use") || text.includes("account already exists")) return "Already settled";
-  if (text.includes("merchant") && text.includes("match")) return "Merchant account does not match the signed payment.";
-  if (text.includes("invalidintentwindow") || text.includes("invalid intent window")) return "Invalid intent window; the customer's device clock may have been off. Ask for a new payment.";
-  if (text.includes("rentreserveexhausted") || text.includes("rent reserve")) return "The reservation cannot cover payment account rent.";
-  if (text.includes("lamportinvariantbroken") || text.includes("lamport invariant")) return "The reservation balance invariant was violated.";
-  if (text.includes("exceedsperpaymentcap") || text.includes("per-payment cap")) return "The payment exceeds the reservation per-payment cap.";
-  if (text.includes("insufficientcapacity") || text.includes("capacity")) return "The reservation has insufficient remaining capacity.";
-  if (text.includes("settlewindowclosed") || text.includes("settlement window")) return "The settlement deadline has passed.";
-  if (text.includes("invalidsignature") || text.includes("signature") || text.includes("ed25519")) return "The on-chain signature verification failed.";
-  return err instanceof Error ? err.message : "Settlement failed.";
+  const message = err instanceof Error ? err.message : String(err);
+  const haystack = `${message}\n${collectLogs(err, logs).join("\n")}`;
+
+  const code = /Error Code: (\w+)/.exec(haystack)?.[1];
+  if (code && PROGRAM_ERRORS[code]) return PROGRAM_ERRORS[code];
+
+  const lower = haystack.toLowerCase();
+  if (lower.includes("already in use") || lower.includes("account already exists")) return "Already settled";
+  if (/ed25519sigverify\w* failed/i.test(haystack)) return "The on-chain signature verification failed.";
+  if (lower.includes("blockhash not found")) return "The network is busy or the blockhash expired. Try again.";
+  if (lower.includes("insufficient funds") || lower.includes("insufficient lamports")) {
+    return "The wallet does not have enough SOL to pay for this transaction.";
+  }
+  if (lower.includes("user rejected") || lower.includes("rejected the request")) {
+    return "You rejected the wallet request.";
+  }
+
+  return message || "Settlement failed.";
 }
 
 // ---------- reserve ----------
