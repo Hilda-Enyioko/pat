@@ -170,7 +170,7 @@ impl Fixture {
     }
 
     fn new(capacity: u64, per_payment_cap: u64, max_payments: u32) -> Self {
-        let mut svm = LiteSVM::new();
+        let mut svm = LiteSVM::new().with_precompiles();
         svm.add_program_from_file(pat::ID, PROGRAM_SO)
             .expect("program binary missing; run `anchor build` first");
 
@@ -643,4 +643,19 @@ fn settle_after_withdraw_fails() {
 
     let intent = f.intent(1, 100_000_000, 0, 100_000_000);
     assert!(f.settle(&intent).is_err());
+}
+
+#[test]
+fn debug_ed25519_precompile_account() {
+    let svm = LiteSVM::new().with_precompiles();
+    match svm.get_account(&ed25519_program::ID) {
+        Some(a) => println!(
+            "ed25519 account FOUND: executable={} owner={} lamports={} data_len={}",
+            a.executable,
+            a.owner,
+            a.lamports,
+            a.data.len()
+        ),
+        None => println!("ed25519 account MISSING"),
+    }
 }
