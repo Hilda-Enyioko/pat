@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
 import {
   availableOffline,
@@ -21,50 +21,59 @@ export function LedgerPanel({
 }) {
   const { connection } = useConnection();
   const [msg, setMsg] = useState<string | null>(null);
-  const now = nowAdjusted(ledger);
-  const currentPhase = phaseOf(ledger, now);
 
-  async function refresh() {
-    try {
-      await reconcileWithChain(connection, ledger);
-      setMsg("Synced from chain.");
-      onChange();
-    } catch (e) {
-      setMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  const ledgerRef = useRef(ledger);
+  ledgerRef.current = ledger;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  useEffect(() => {
-    if (online) void refresh();
-  }, [online]);
+  const phaseLabel = ledger.withdrawn ? "Withdrawn" : phaseOf(ledger, nowAdjusted(ledger));
+  const hasSigned = ledger.history?.some((h) => h.status === "SIGNED") ?? false;
 
-  useEffect(() => {
-    if (!online || !ledger.history?.some((h) => h.status === "SIGNED")) return;
-    const id = window.setInterval(() => void refresh(), 15000);
-    return () => window.clearInterval(id);
-  }, [online, ledger.reservation, ledger.history]);
-
-  const historyList = [...(ledger.history ?? [])].sort(
-    (a, b) => b.createdAt - a.createdAt
+  const refresh = useCallback(
+    async (silent = false) => {
+      try {
+        await reconcileWithChain(connection, ledgerRef.current);
+        if (!silent) setMsg("Synced from chain.");
+        onChangeRef.current();
+      } catch (e) {
+        setMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [connection]
   );
+
+  useEffect(() => {
+    if (online) void refresh(true);
+  }, [online, refresh]);
+
+  useEffect(() => {
+    if (!online || !hasSigned || ledger.withdrawn) return;
+    const id = window.setInterval(() => void refresh(true), 15000);
+    return () => window.clearInterval(id);
+  }, [online, hasSigned, ledger.withdrawn, ledger.reservation, refresh]);
+
+  const historyList = [...(ledger.history ?? [])].sort((a, b) => b.createdAt - a.createdAt);
 
   return (
     <section className="card ledger-panel">
       <header className="card-header">
         <div className="card-title-group">
           <h3>
-            Reservation{" "}
-            <span className="mono-accent">{shortKey(ledger.reservation)}</span>
+            Reservation <span className="mono-accent">{shortKey(ledger.reservation)}</span>
           </h3>
-          <span className={`pill phase-${currentPhase.toLowerCase()}`}>
-            {currentPhase}
-          </span>
+          <span className={`pill phase-${phaseLabel.toLowerCase()}`}>{phaseLabel}</span>
         </div>
 
-        {!online && (
-          <span className="offline-badge">Offline — local ledger</span>
-        )}
+        {!online && <span className="offline-badge">Offline — local ledger</span>}
       </header>
+
+      {ledger.restoredFromChain && !ledger.withdrawn && (
+        <p className="status-message status-warning">
+          Restored from chain on this device. Payments signed on another device and not yet settled
+          are not visible here, so the available offline balance may be overstated.
+        </p>
+      )}
 
       <div className="balance-display">
         <div className="balance-amount">
@@ -78,9 +87,7 @@ export function LedgerPanel({
           <tbody>
             <tr>
               <td>Capacity</td>
-              <td className="align-right mono-accent">
-                {lamportsToSol(BigInt(ledger.capacity))} SOL
-              </td>
+              <td className="align-right mono-accent">{lamportsToSol(BigInt(ledger.capacity))} SOL</td>
             </tr>
             <tr>
               <td>Committed on-chain</td>
@@ -105,11 +112,7 @@ export function LedgerPanel({
       </div>
 
       <div className="panel-actions">
-        <button
-          className="quiet-button refresh-button"
-          onClick={() => void refresh()}
-          disabled={!online}
-        >
+        <button className="quiet-button refresh-button" onClick={() => void refresh()} disabled={!online}>
           Refresh from chain
         </button>
         {msg && (
@@ -141,26 +144,12 @@ export function LedgerPanel({
               <tbody>
                 {historyList.map((h) => (
                   <tr key={h.paymentId}>
-                    <td className="mono-cell">
-                      {new Date(h.createdAt * 1000).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                    </td>
-                    <td className="mono-cell">
-                      {h.merchant ? shortKey(h.merchant) : "—"}
-                    </td>
-                    <td className="mono-cell font-bold">
-                      {lamportsToSol(BigInt(h.amount))} SOL
-                    </td>
+                    <td className="mono-cell">{new Date(h.createdAt * 1000).toLocaleString()}</td>
+                    <td className="mono-cell">{h.merchant ? shortKey(h.merchant) : "—"}</td>
+                    <td className="mono-cell font-bold">{lamportsToSol(BigInt(h.amount))} SOL</td>
                     <td>
-                      <span className={`pill status-${h.status.toLowerCase()}`}>
-                        {h.status}
-                      </span>
-                      {h.failureReason && (
-                        <span className="failure-hint"> — {h.failureReason}</span>
-                      )}
+                      <span className={`pill status-${h.status.toLowerCase()}`}>{h.status}</span>
+                      {h.failureReason && <span className="failure-hint"> — {h.failureReason}</span>}
                     </td>
                   </tr>
                 ))}

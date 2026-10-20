@@ -8,9 +8,11 @@ import { Providers } from "./components/Providers";
 import { ReserveForm } from "./components/ReserveForm";
 import { LedgerPanel } from "./components/LedgerPanel";
 import { MerchantSettlement, SignPayment } from "./components/PaymentFlows";
-import { listLedgers, type OfflineLedger } from "./lib/ledger";
+import { WalletHistory } from "./components/WalletHistory";
+import { listLedgers, nowAdjusted, type OfflineLedger } from "./lib/ledger";
 import { shortKey } from "./lib/format";
 import { useOnline } from "./hooks/useOnline";
+import { useWalletHistory } from "./hooks/useWalletHistory";
 import { CLUSTER, RPC_URL } from "./config";
 import { Globe } from "./components/Globe";
 
@@ -34,6 +36,13 @@ function useOfflineReady() {
 
 type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
 const validViews: View[] = ["landing", "connect", "ledger", "reserve", "sign", "merchant"];
+
+const NAV_ITEMS: { view: View; label: string }[] = [
+  { view: "ledger", label: "Ledger" },
+  { view: "reserve", label: "Reserve" },
+  { view: "sign", label: "Sign" },
+  { view: "merchant", label: "Merchant" },
+];
 
 function Arrow() {
   return <span aria-hidden="true">↗</span>;
@@ -76,9 +85,7 @@ function Nav({
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth > 552) {
-        setMobileMenuOpen(false);
-      }
+      if (window.innerWidth > 552) setMobileMenuOpen(false);
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -125,49 +132,25 @@ function Nav({
         <span>PAT</span>
       </button>
 
-      {/* Desktop Navigation Links */}
       <nav className="nav-links" aria-label="Primary navigation">
-        <button
-          type="button"
-          className={view === "ledger" ? "active" : ""}
-          onClick={() => handleNavigate("ledger")}
-        >
-          Ledger
-        </button>
-        <button
-          type="button"
-          className={view === "reserve" ? "active" : ""}
-          onClick={() => handleNavigate("reserve")}
-        >
-          Reserve
-        </button>
-        <button
-          type="button"
-          className={view === "sign" ? "active" : ""}
-          onClick={() => handleNavigate("sign")}
-        >
-          Sign
-        </button>
-        <button
-          type="button"
-          className={view === "merchant" ? "active" : ""}
-          onClick={() => handleNavigate("merchant")}
-        >
-          Merchant
-        </button>
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.view}
+            type="button"
+            className={view === item.view ? "active" : ""}
+            onClick={() => handleNavigate(item.view)}
+          >
+            {item.label}
+          </button>
+        ))}
       </nav>
 
-      {/* Action Strip */}
       <div className="nav-actions">
         {publicKey ? (
           <>
             <span className="wallet-chip desktop-only">{shortKey(publicKey)}</span>
             {statusIndicator}
-            <button
-              type="button"
-              className="text-button desktop-only"
-              onClick={handleDisconnect}
-            >
+            <button type="button" className="text-button desktop-only" onClick={handleDisconnect}>
               Disconnect
             </button>
           </>
@@ -178,7 +161,6 @@ function Nav({
           </>
         )}
 
-        {/* Mobile Dropdown Trigger */}
         <button
           type="button"
           className="mobile-menu-trigger"
@@ -190,7 +172,6 @@ function Nav({
         </button>
       </div>
 
-      {/* Mobile Dropdown Menu */}
       {mobileMenuOpen && (
         <div className="mobile-dropdown-menu">
           {publicKey && (
@@ -199,34 +180,16 @@ function Nav({
             </div>
           )}
 
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "ledger" ? "active" : ""}`}
-            onClick={() => handleNavigate("ledger")}
-          >
-            Ledger
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "reserve" ? "active" : ""}`}
-            onClick={() => handleNavigate("reserve")}
-          >
-            Reserve
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "sign" ? "active" : ""}`}
-            onClick={() => handleNavigate("sign")}
-          >
-            Sign
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "merchant" ? "active" : ""}`}
-            onClick={() => handleNavigate("merchant")}
-          >
-            Merchant
-          </button>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.view}
+              type="button"
+              className={`mobile-menu-item ${view === item.view ? "active" : ""}`}
+              onClick={() => handleNavigate(item.view)}
+            >
+              {item.label}
+            </button>
+          ))}
 
           {publicKey && (
             <>
@@ -247,6 +210,9 @@ function Nav({
 }
 
 function Landing({ onStart }: { onStart: () => void }) {
+  const scrollToHow = () =>
+    document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+
   return (
     <main className="landing">
       <section className="landing-hero anim go">
@@ -280,14 +246,7 @@ function Landing({ onStart }: { onStart: () => void }) {
             <button className="primary-button" onClick={onStart}>
               Connect wallet <Arrow />
             </button>
-            <button
-              className="quiet-button"
-              onClick={() =>
-                document.getElementById("how-it-works")?.scrollIntoView({
-                  behavior: "smooth",
-                })
-              }
-            >
+            <button className="quiet-button" onClick={scrollToHow}>
               How it works <span>↓</span>
             </button>
           </div>
@@ -295,14 +254,7 @@ function Landing({ onStart }: { onStart: () => void }) {
             <span className="online-indicator">● live on {CLUSTER}</span>
           </div>
         </div>
-        <button
-          className="scroll-cue"
-          onClick={() =>
-            document.getElementById("how-it-works")?.scrollIntoView({
-              behavior: "smooth",
-            })
-          }
-        >
+        <button className="scroll-cue" onClick={scrollToHow}>
           Scroll <span>⌄</span>
         </button>
       </section>
@@ -361,21 +313,18 @@ function AppContent() {
   const [manualOnline, setManualOnline] = useState<boolean | null>(null);
   const offlineReady = useOfflineReady();
 
-  // If the user manually toggled the mode, honor manualOnline; otherwise follow browser network state
   const online = manualOnline ?? systemOnline;
 
   const toggleOnline = useCallback(() => {
     setManualOnline((prev) => !(prev ?? systemOnline));
   }, [systemOnline]);
 
-  // Initialize view from URL path
   const [view, setViewState] = useState<View>(() => {
     const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
     return validViews.includes(candidate) ? candidate : "landing";
   });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
 
-  // Update browser history via pushState on navigation
   const setView = useCallback((next: View) => {
     setViewState(next);
     const targetPath = next === "landing" ? "/" : `/${next}`;
@@ -388,40 +337,36 @@ function AppContent() {
     setLedgers(publicKey ? await listLedgers(publicKey.toBase58()) : []);
   }, [publicKey]);
 
+  const { history, loading, error, ready, refresh: refreshHistory } = useWalletHistory(online, reload);
+
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // Synchronize browser forward/back buttons
   useEffect(() => {
     const handlePopState = () => {
       const candidate = window.location.pathname.replace(/^\/|\/$/g, "") as View;
       setViewState(validViews.includes(candidate) ? candidate : "landing");
     };
-
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // Guard: if no wallet is connected and trying to access app paths, route to /connect
   useEffect(() => {
     if (!publicKey && view !== "landing" && view !== "connect") {
       setView("connect");
     }
   }, [publicKey, view, setView]);
 
-  // Once connected, transition from connect page to ledger/reserve
   useEffect(() => {
-    if (!publicKey) return;
+    if (!publicKey || view !== "connect" || !ready) return;
     void listLedgers(publicKey.toBase58()).then((items) => {
       setLedgers(items);
-      if (view === "connect") {
-        setView(items.length ? "ledger" : "reserve");
-      }
+      const hasChainReservations = (history?.reservations.length ?? 0) > 0;
+      setView(items.length || hasChainReservations ? "ledger" : "reserve");
     });
-  }, [publicKey, view, setView]);
+  }, [publicKey, view, ready, history, setView]);
 
-  // Determine view to render: fall back to "connect" if unauthenticated
   const guardedView =
     publicKey || view === "landing" || view === "connect" ? view : "connect";
 
@@ -430,13 +375,12 @@ function AppContent() {
     setView("landing");
   };
 
+  const syncing = loading || !ready;
+  const hasHistory = (history?.timeline.length ?? 0) > 0;
+
   let content: ReactNode;
   if (guardedView === "landing") {
-    content = (
-      <Landing
-        onStart={() => (publicKey ? setView("ledger") : setView("connect"))}
-      />
-    );
+    content = <Landing onStart={() => (publicKey ? setView("ledger") : setView("connect"))} />;
   } else if (guardedView === "connect") {
     content = <Connect />;
   } else if (guardedView === "ledger") {
@@ -455,17 +399,26 @@ function AppContent() {
             Reserve funds <Arrow />
           </button>
         </div>
+
         {ledgers.length === 0 ? (
-          <div className="empty-state">
-            <h2>Your ledger is waiting.</h2>
-            <p>
-              Create your first reservation to see your available offline balance
-              here.
-            </p>
-            <button className="primary-button" onClick={() => setView("reserve")}>
-              Create reservation <Arrow />
-            </button>
-          </div>
+          syncing ? (
+            <div className="empty-state">
+              <h2>Reading your history…</h2>
+              <p>Looking up this wallet on {CLUSTER}.</p>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h2>{hasHistory ? "No active reservations." : "Your ledger is waiting."}</h2>
+              <p>
+                {hasHistory
+                  ? "Create a new reservation to spend offline again."
+                  : "Create your first reservation to see your available offline balance here."}
+              </p>
+              <button className="primary-button" onClick={() => setView("reserve")}>
+                Create reservation <Arrow />
+              </button>
+            </div>
+          )
         ) : (
           ledgers.map((ledger) => (
             <LedgerPanel
@@ -476,6 +429,14 @@ function AppContent() {
             />
           ))
         )}
+
+        <WalletHistory
+          history={history}
+          loading={loading}
+          error={error}
+          online={online}
+          onRefresh={() => void refreshHistory()}
+        />
       </main>
     );
   } else if (guardedView === "reserve") {
@@ -495,13 +456,15 @@ function AppContent() {
         <ReserveForm
           onCreated={() => {
             void reload();
+            void refreshHistory();
             setView("ledger");
           }}
         />
       </main>
     );
   } else if (guardedView === "sign") {
-    content = <SignPayment ledgers={ledgers} />;
+    const signable = ledgers.filter((l) => !l.withdrawn && nowAdjusted(l) < l.expiresAt);
+    content = <SignPayment ledgers={signable} />;
   } else {
     content = <MerchantSettlement />;
   }
@@ -522,7 +485,6 @@ function AppContent() {
         </div>
       )}
 
-      {/* Smooth cross-fade transition */}
       <AnimatePresence mode="wait">
         <motion.div
           key={guardedView}

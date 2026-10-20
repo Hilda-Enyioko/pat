@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
@@ -34,6 +34,12 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
   const [intent, setIntent] = useState<SignedIntentPayload | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  useEffect(() => {
+    if (!ledgers.some((l) => l.reservation === selected)) {
+      setSelected(ledgers[0]?.reservation ?? "");
+    }
+  }, [ledgers, selected]);
 
   async function signPayment() {
     let paymentId = "";
