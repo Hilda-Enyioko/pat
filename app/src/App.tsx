@@ -1,364 +1,51 @@
 import { motion, AnimatePresence, type Variants } from "framer-motion";
-import "./App.css";
-import "@solana/wallet-adapter-react-ui/styles.css";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Providers } from "./components/Providers";
 import { ReserveForm } from "./components/ReserveForm";
 import { LedgerPanel } from "./components/LedgerPanel";
 import { MerchantSettlement, SignPayment } from "./components/PaymentFlows";
+import { Landing } from "./components/Landing";
+import { Connect } from "./components/Connect";
+import { Header } from "./components/site/Header";
+import { HowItWorks } from "./components/site/HowItWorks";
+import { PageHeading } from "./components/site/PageHeading";
+import { PillButton } from "./components/site/Pill";
 import { listLedgers, type OfflineLedger } from "./lib/ledger";
-import { shortKey } from "./lib/format";
+import { validViews, type View } from "./lib/views";
 import { useOnline } from "./hooks/useOnline";
 import { CLUSTER, RPC_URL } from "./config";
-import { Globe } from "./components/Globe";
-
-const logoUrl = "/logo.png";
 
 const viewVariants: Variants = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease: "easeOut" } },
+  initial: { opacity: 0, y: 14 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
   exit: { opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeIn" } },
 };
 
 function useOfflineReady() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    const onReady = () => setReady(true);
+    let timer: number | undefined;
+    const onReady = () => {
+      setReady(true);
+      timer = window.setTimeout(() => setReady(false), 6000);
+    };
     window.addEventListener("pat:offline-ready", onReady);
-    return () => window.removeEventListener("pat:offline-ready", onReady);
+    return () => {
+      window.removeEventListener("pat:offline-ready", onReady);
+      window.clearTimeout(timer);
+    };
   }, []);
   return ready;
 }
 
-type View = "landing" | "connect" | "ledger" | "reserve" | "sign" | "merchant";
-const validViews: View[] = ["landing", "connect", "ledger", "reserve", "sign", "merchant"];
-
-function Arrow() {
-  return <span aria-hidden="true">↗</span>;
-}
-
-function WalletGate() {
-  const { wallets } = useWallet();
-  const installed =
-    wallets.some((wallet) => wallet.readyState === "Installed") ||
-    Boolean(window.solflare?.isSolflare);
-  return (
-    <div className="wallet-hints">
-      {!installed && (
-        <p>
-          No wallet extension detected in this browser tab. Install Solflare, enable
-          it for this site (and for Incognito if applicable), then reload.
-        </p>
-      )}
-      <p>Set Solflare to Devnet: Settings &gt; Network &gt; Devnet.</p>
-    </div>
-  );
-}
-
-function Nav({
-  view,
-  setView,
-  onDisconnect,
-  publicKey,
-  online,
-  onToggleOnline,
-}: {
-  view: View;
-  setView: (v: View) => void;
-  onDisconnect: () => void;
-  publicKey: string | null;
-  online: boolean;
-  onToggleOnline: () => void;
-}) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 552) {
-        setMobileMenuOpen(false);
-      }
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const handleNavigate = (next: View) => {
-    setView(next);
-    setMobileMenuOpen(false);
-  };
-
-  const handleDisconnect = () => {
-    onDisconnect();
-    setMobileMenuOpen(false);
-  };
-
-  const statusIndicator = (
-    <button
-      type="button"
-      className={online ? "online-indicator" : "offline-badge"}
-      onClick={onToggleOnline}
-      title={`Currently ${online ? "Online" : "Offline"}. Click to toggle mode.`}
-      aria-label={`Toggle network status, currently ${online ? "Online" : "Offline"}`}
-      style={{
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        font: "inherit",
-        padding: 0,
-      }}
-    >
-      {online ? "Online" : "Offline"}
-    </button>
-  );
-
-  return (
-    <header className="site-nav">
-      <button
-        type="button"
-        className="brand"
-        onClick={() => handleNavigate("landing")}
-        aria-label="PAT home"
-      >
-        <img src={logoUrl} alt="PAT" />
-        <span>PAT</span>
-      </button>
-
-      {/* Desktop Navigation Links */}
-      <nav className="nav-links" aria-label="Primary navigation">
-        <button
-          type="button"
-          className={view === "ledger" ? "active" : ""}
-          onClick={() => handleNavigate("ledger")}
-        >
-          Ledger
-        </button>
-        <button
-          type="button"
-          className={view === "reserve" ? "active" : ""}
-          onClick={() => handleNavigate("reserve")}
-        >
-          Reserve
-        </button>
-        <button
-          type="button"
-          className={view === "sign" ? "active" : ""}
-          onClick={() => handleNavigate("sign")}
-        >
-          Sign
-        </button>
-        <button
-          type="button"
-          className={view === "merchant" ? "active" : ""}
-          onClick={() => handleNavigate("merchant")}
-        >
-          Merchant
-        </button>
-      </nav>
-
-      {/* Action Strip */}
-      <div className="nav-actions">
-        {publicKey ? (
-          <>
-            <span className="wallet-chip desktop-only">{shortKey(publicKey)}</span>
-            {statusIndicator}
-            <button
-              type="button"
-              className="text-button desktop-only"
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <>
-            {statusIndicator}
-            <WalletMultiButton />
-          </>
-        )}
-
-        {/* Mobile Dropdown Trigger */}
-        <button
-          type="button"
-          className="mobile-menu-trigger"
-          onClick={() => setMobileMenuOpen((prev) => !prev)}
-          aria-label="Toggle navigation menu"
-          aria-expanded={mobileMenuOpen}
-        >
-          {mobileMenuOpen ? "✕" : "☰"}
-        </button>
-      </div>
-
-      {/* Mobile Dropdown Menu */}
-      {mobileMenuOpen && (
-        <div className="mobile-dropdown-menu">
-          {publicKey && (
-            <div className="mobile-dropdown-wallet">
-              <span className="wallet-chip">{shortKey(publicKey)}</span>
-            </div>
-          )}
-
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "ledger" ? "active" : ""}`}
-            onClick={() => handleNavigate("ledger")}
-          >
-            Ledger
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "reserve" ? "active" : ""}`}
-            onClick={() => handleNavigate("reserve")}
-          >
-            Reserve
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "sign" ? "active" : ""}`}
-            onClick={() => handleNavigate("sign")}
-          >
-            Sign
-          </button>
-          <button
-            type="button"
-            className={`mobile-menu-item ${view === "merchant" ? "active" : ""}`}
-            onClick={() => handleNavigate("merchant")}
-          >
-            Merchant
-          </button>
-
-          {publicKey && (
-            <>
-              <div className="mobile-dropdown-divider" />
-              <button
-                type="button"
-                className="mobile-menu-item disconnect-item"
-                onClick={handleDisconnect}
-              >
-                Disconnect
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </header>
-  );
-}
-
-function Landing({ onStart }: { onStart: () => void }) {
-  return (
-    <main className="landing">
-      <section className="landing-hero anim go">
-        <div
-          className="globe-bg"
-          role="img"
-          aria-label="Spinning globe rendered as a blue dot matrix with payment arcs, against a starfield"
-        >
-          <Globe />
-        </div>
-        <div className="hero-vignette" />
-        <div className="hero-inner">
-          <h1>
-            <span className="ln">
-              <span className="ln-i">Reserve online.</span>
-            </span>
-            <span className="ln">
-              <span className="ln-i">
-                <em>Pay offline.</em>
-              </span>
-            </span>
-          </h1>
-          <p className="hero-lede">
-            Turn a connected wallet into a bounded offline allowance on Solana,
-            <br />
-            sign payments the moment the network disappears,
-            <br />
-            and let merchants settle when they reconnect.
-          </p>
-          <div className="hero-actions">
-            <button className="primary-button" onClick={onStart}>
-              Connect wallet <Arrow />
-            </button>
-            <button
-              className="quiet-button"
-              onClick={() =>
-                document.getElementById("how-it-works")?.scrollIntoView({
-                  behavior: "smooth",
-                })
-              }
-            >
-              How it works <span>↓</span>
-            </button>
-          </div>
-          <div className="trust-line">
-            <span className="online-indicator">● live on {CLUSTER}</span>
-          </div>
-        </div>
-        <button
-          className="scroll-cue"
-          onClick={() =>
-            document.getElementById("how-it-works")?.scrollIntoView({
-              behavior: "smooth",
-            })
-          }
-        >
-          Scroll <span>⌄</span>
-        </button>
-      </section>
-      <section id="how-it-works" className="feature-strip page-shell">
-        <div>
-          <span>01</span>
-          <h2>Reserve online</h2>
-          <p>Set a bounded allowance before connectivity fails.</p>
-        </div>
-        <div>
-          <span>02</span>
-          <h2>Sign offline</h2>
-          <p>Your wallet authorizes each payment without a network.</p>
-        </div>
-        <div>
-          <span>03</span>
-          <h2>Merchant settles</h2>
-          <p>Payments become verifiable proof when you reconnect.</p>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function Connect() {
-  return (
-    <main className="centered-page">
-      <section className="connect-card">
-        <div className="step-count">STEP 1 / 3</div>
-        <h1>Connect your wallet.</h1>
-        <p className="muted">
-          PAT never takes custody of your funds. Connect the wallet you&apos;ll use
-          to reserve an offline allowance.
-        </p>
-        <div className="wallet-panel">
-          <div className="wallet-icon">◎</div>
-          <div>
-            <strong>Your Solana wallet</strong>
-            <span>Solflare, Phantom, or another installed wallet</span>
-          </div>
-          <WalletMultiButton />
-        </div>
-        <WalletGate />
-        <div className="security-note">
-          <span>⌁</span>
-          <p>Non-custodial by default. PAT only signs instructions you approve.</p>
-        </div>
-      </section>
-    </main>
-  );
-}
-
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const { online: systemOnline } = useOnline();
   const [manualOnline, setManualOnline] = useState<boolean | null>(null);
+  const [howOpen, setHowOpen] = useState(false);
   const offlineReady = useOfflineReady();
 
   // If the user manually toggled the mode, honor manualOnline; otherwise follow browser network state
@@ -378,6 +65,7 @@ function AppContent() {
   // Update browser history via pushState on navigation
   const setView = useCallback((next: View) => {
     setViewState(next);
+    window.scrollTo(0, 0);
     const targetPath = next === "landing" ? "/" : `/${next}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, "", targetPath);
@@ -425,73 +113,103 @@ function AppContent() {
   const guardedView =
     publicKey || view === "landing" || view === "connect" ? view : "connect";
 
+  // The landing is a viewport-locked composition: no document scroll.
+  useEffect(() => {
+    document.documentElement.classList.toggle("locked", guardedView === "landing");
+  }, [guardedView]);
+
   const disconnectWallet = () => {
     void disconnect();
     setView("landing");
   };
 
-  let content: ReactNode;
+  const openWalletModal = () => setWalletModalVisible(true);
+  const start = () => (publicKey ? setView("ledger") : setView("connect"));
+
+  const header = (
+    <Header
+      view={guardedView}
+      onNavigate={setView}
+      publicKey={publicKey?.toBase58() ?? null}
+      online={online}
+      onToggleOnline={toggleOnline}
+      onConnect={openWalletModal}
+      onDisconnect={disconnectWallet}
+      onHowItWorks={() => setHowOpen(true)}
+    />
+  );
+
+  const overlays = (
+    <>
+      <HowItWorks open={howOpen} onClose={() => setHowOpen(false)} onStart={start} />
+      {offlineReady && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-4 z-50 inline-flex items-center gap-2.5 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-[0_16px_36px_-16px_rgba(15,15,14,.6)]"
+        >
+          <span aria-hidden="true" className="size-2 rounded-full bg-blue" />
+          Offline payments ready on this device
+        </div>
+      )}
+    </>
+  );
+
   if (guardedView === "landing") {
-    content = (
-      <Landing
-        onStart={() => (publicKey ? setView("ledger") : setView("connect"))}
-      />
+    return (
+      <>
+        <Landing header={header} connected={Boolean(publicKey)} onStart={start} onHowItWorks={() => setHowOpen(true)} />
+        {overlays}
+      </>
     );
-  } else if (guardedView === "connect") {
-    content = <Connect />;
+  }
+
+  let content: ReactNode;
+  if (guardedView === "connect") {
+    content = <Connect onConnect={openWalletModal} />;
   } else if (guardedView === "ledger") {
     content = (
-      <main className="workspace page-shell">
-        <div className="workspace-heading">
-          <div>
-            <p className="eyebrow">Your offline ledger</p>
-            <h1>Know what you can spend.</h1>
-            <p className="muted">
-              Your ledger is persisted on this device and fails closed when it cannot
-              verify your allowance.
-            </p>
-          </div>
-          <button className="primary-button" onClick={() => setView("reserve")}>
-            Reserve funds <Arrow />
-          </button>
-        </div>
+      <main className="page">
+        <PageHeading
+          eyebrow="Your offline ledger"
+          lines={["Know what", "you can", "spend."]}
+          lede="Your ledger lives on this device and fails closed when it cannot verify your allowance."
+          aside={<PillButton size="lg" text="Reserve funds" onClick={() => setView("reserve")} />}
+        />
         {ledgers.length === 0 ? (
-          <div className="empty-state">
-            <h2>Your ledger is waiting.</h2>
-            <p>
-              Create your first reservation to see your available offline balance
-              here.
+          <section className="grainy flex flex-col items-start gap-6 rounded-[22px] bg-red p-6 sm:p-10">
+            <h2 className="display-h text-[clamp(36px,5vw,64px)]">
+              Your ledger
+              <br />
+              is waiting.
+            </h2>
+            <p className="m-0 max-w-md text-[17px] leading-relaxed">
+              Create your first reservation to see your available offline balance here.
             </p>
-            <button className="primary-button" onClick={() => setView("reserve")}>
-              Create reservation <Arrow />
-            </button>
-          </div>
+            <PillButton size="lg" text="Create reservation" onClick={() => setView("reserve")} />
+          </section>
         ) : (
-          ledgers.map((ledger) => (
-            <LedgerPanel
-              key={ledger.reservation}
-              ledger={ledger}
-              online={online}
-              onChange={() => void reload()}
-            />
-          ))
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            {ledgers.map((ledger) => (
+              <LedgerPanel key={ledger.reservation} ledger={ledger} online={online} onChange={() => void reload()} />
+            ))}
+          </div>
         )}
       </main>
     );
   } else if (guardedView === "reserve") {
     content = (
-      <main className="workspace page-shell">
-        <div className="workspace-heading">
-          <div>
-            <p className="eyebrow">Step 2 / 3</p>
-            <h1>Reserve your offline funds.</h1>
-            <p className="muted">
-              Lock a bounded allowance while connected. Unspent funds return after
-              the settle window.
-            </p>
-          </div>
-          <span className="online-badge">● {online ? "Online" : "Offline"}</span>
-        </div>
+      <main className="page">
+        <PageHeading
+          eyebrow="Step 2 / 3"
+          lines={["Reserve", "offline", "funds."]}
+          lede="Lock a bounded allowance while connected. Unspent funds return after the settle window."
+          aside={
+            <span className="inline-flex items-center gap-2 self-end rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold">
+              <span aria-hidden="true" className={online ? "size-2 rounded-full bg-[#3fb36b]" : "size-2 rounded-full bg-red"} />
+              {online ? "Online" : "Offline"}
+            </span>
+          }
+        />
         <ReserveForm
           onCreated={() => {
             void reload();
@@ -507,22 +225,8 @@ function AppContent() {
   }
 
   return (
-    <div className="app-shell">
-      <Nav
-        view={guardedView}
-        setView={setView}
-        onDisconnect={disconnectWallet}
-        publicKey={publicKey?.toBase58() ?? null}
-        online={online}
-        onToggleOnline={toggleOnline}
-      />
-      {offlineReady && (
-        <div className="offline-ready" role="status">
-          Offline payments ready on this device
-        </div>
-      )}
-
-      {/* Smooth cross-fade transition */}
+    <div className="shell">
+      {header}
       <AnimatePresence mode="wait">
         <motion.div
           key={guardedView}
@@ -530,17 +234,18 @@ function AppContent() {
           initial="initial"
           animate="animate"
           exit="exit"
-          style={{ width: "100%", display: "flex", flexDirection: "column", flex: 1 }}
+          className="flex w-full flex-1 flex-col"
         >
           {content}
         </motion.div>
       </AnimatePresence>
-
-      <footer className="site-footer">
+      <footer className="mx-auto flex w-[min(1200px,calc(100%-2*var(--gut)))] flex-wrap justify-between gap-2 border-t border-ink/10 py-6 text-xs text-muted-foreground">
+        <span>PAT · Primitive Airborne Transaction</span>
         <span>
           {CLUSTER} · {new URL(RPC_URL).host}
         </span>
       </footer>
+      {overlays}
     </div>
   );
 }
@@ -552,8 +257,6 @@ export default function App() {
     </Providers>
   );
 }
-
-export { logoUrl };
 
 declare global {
   interface Window {

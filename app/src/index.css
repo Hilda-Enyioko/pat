@@ -1,6 +1,178 @@
-:root { font-family: 'Plus Jakarta Sans', sans-serif; color: #f4f7ff; background: #060b18; font-synthesis: none; text-rendering: geometricPrecision; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #060b18; }
-button, input, select { font: inherit; }
-button { cursor: pointer; }
-button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #55a8ff; outline-offset: 3px; }
+@import "tailwindcss";
+@import "./styles/atrium.css";
+
+/* Light-only design: dark: utilities apply only under an explicit .theme-dark
+   ancestor, never from the OS colour scheme. */
+@custom-variant dark (&:where(.theme-dark, .theme-dark *));
+
+
+/* Design tokens. Palette and type follow the editorial "archive" concept:
+   warm paper, near-black ink, three flat accent blocks. */
+:root {
+  --paper: #f5f4ef;
+  --ink: #0f0f0e;
+  --card-dark: #151515;
+  --card-cream: #f9f6f1;
+  --stone: #e8e7e2;
+  --red: #ef5d44;
+  --yellow: #fcdd71;
+  --blue: #9fd5f7;
+
+  --nav-bg: #ffffff;
+  --nav-bar: #ffffff;
+  --nav-fg: var(--ink);
+  --nav-muted: #62615d;
+  --nav-line: rgba(15, 15, 14, 0.08);
+  --nav-rule: rgba(15, 15, 14, 0.16);
+  --nav-search: var(--stone);
+  --nav-cta: var(--ink);
+  --nav-cta-fg: #fff;
+
+  --display: "Archivo Variable", "Archivo", "Arial Black", Impact, system-ui, sans-serif;
+  --sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Inline grain so tiles keep their texture with no network (this is an offline-first PWA). */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* shadcn semantic tokens */
+  --radius: 22px;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--card-cream);
+  --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: var(--stone);
+  --secondary-foreground: var(--ink);
+  --muted: #efede6;
+  --muted-foreground: #62615d;
+  --accent: var(--stone);
+  --accent-foreground: var(--ink);
+  --destructive: var(--red);
+  --destructive-foreground: #ffffff;
+  --border: rgba(15, 15, 14, 0.1);
+  --input: rgba(15, 15, 14, 0.16);
+  --ring: #3b82f6;
+}
+
+@theme inline {
+  --font-sans: var(--sans);
+  --font-display: var(--display);
+  --font-mono: var(--mono);
+
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-card-dark: var(--card-dark);
+  --color-card-cream: var(--card-cream);
+  --color-stone: var(--stone);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-blue: var(--blue);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    background: var(--paper);
+  }
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+    font-synthesis: none;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+  :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 3px;
+  }
+}
+
+/* Solana wallet-adapter modal, re-skinned to the paper/ink system. */
+.wallet-adapter-modal-overlay {
+  background: rgba(15, 15, 14, 0.42) !important;
+  backdrop-filter: blur(6px);
+}
+.wallet-adapter-modal-wrapper {
+  background: #fff !important;
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 0 0 1px var(--nav-line), 0 30px 60px -30px rgba(15, 15, 14, 0.45) !important;
+}
+.wallet-adapter-modal-title {
+  color: var(--ink) !important;
+  font-family: var(--display) !important;
+  font-weight: 900 !important;
+  font-stretch: 85%;
+  text-transform: uppercase;
+  letter-spacing: -0.04em;
+  font-size: 30px !important;
+  line-height: 1 !important;
+}
+.wallet-adapter-modal-button-close {
+  background: var(--stone) !important;
+}
+.wallet-adapter-modal-button-close svg {
+  fill: var(--ink) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button {
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  font-weight: 600 !important;
+  border-radius: 14px !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button:not([disabled]):hover {
+  background: var(--paper) !important;
+}
+.wallet-adapter-modal-list .wallet-adapter-button span {
+  color: var(--nav-muted) !important;
+  opacity: 1 !important;
+}
+.wallet-adapter-modal-list-more {
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+}
+.wallet-adapter-modal-list-more svg {
+  fill: var(--ink) !important;
+}
+.wallet-adapter-modal-middle-button {
+  background: var(--ink) !important;
+  border-radius: 999px !important;
+}

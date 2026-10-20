@@ -5,6 +5,9 @@ import { Scanner } from "@yudiel/react-qr-scanner";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import nacl from "tweetnacl";
 import bs58 from "bs58";
+import { ChevronDown, QrCode, ScanLine } from "lucide-react";
+import * as PricingCard from "@/components/ui/pricing-card";
+import { cn } from "@/lib/utils";
 
 import {
   availableOffline,
@@ -23,6 +26,10 @@ import {
 } from "../lib/intent";
 import { buildSettleIx, mapProgramError } from "../lib/pat";
 import { lamportsToSol, solToLamports, shortKey } from "../lib/format";
+import { Field, inputClass } from "./site/Field";
+import { PageHeading } from "./site/PageHeading";
+import { PillButton } from "./site/Pill";
+import { StatusNote } from "./site/StatusNote";
 
 export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
   const { publicKey, signMessage } = useWallet();
@@ -145,145 +152,124 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
     status?.startsWith("Wallet returned");
   const isSuccessStatus = status?.startsWith("Signed offline payment");
 
+  const hexShort = intent
+    ? Array.from(intent.paymentId)
+        .slice(0, 4)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+    : "";
+
   return (
-    <main className="workspace page-shell">
-      <div className="workspace-heading">
-        <div>
-          <p className="eyebrow">Step 3 / 3</p>
-          <h1>Sign a payment.</h1>
-          <p className="muted">Your device clock is used; keep it accurate.</p>
-        </div>
-      </div>
+    <main className="page">
+      <PageHeading
+        eyebrow="Step 3 / 3"
+        lines={["Sign a", "payment."]}
+        lede="No network needed. Your device clock is used, so keep it accurate."
+      />
 
-      <section className="intent-card flow-card">
-        <form
-          className="form-stack"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void signPayment();
-          }}
-        >
-          <div className="field-group">
-            <label htmlFor="reservationSelect" className="field-label">
-              Reservation
-            </label>
-            <select
-              id="reservationSelect"
-              className="text-input select-input"
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              {ledgers.length === 0 && (
-                <option value="">No active reservations found</option>
-              )}
-              {ledgers.map((ledger) => (
-                <option key={ledger.reservation} value={ledger.reservation}>
-                  {ledger.reservation.slice(0, 8)}… · {lamportsToSol(availableOffline(ledger))} SOL available
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
+        <section className="rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
+          <form
+            className="flex flex-col gap-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void signPayment();
+            }}
+          >
+            <Field id="reservationSelect" label="Reservation">
+              <div className="relative">
+                <select
+                  id="reservationSelect"
+                  className={cn(inputClass, "cursor-pointer appearance-none pr-12")}
+                  value={selected}
+                  onChange={(e) => setSelected(e.target.value)}
+                >
+                  {ledgers.length === 0 && <option value="">No active reservations found</option>}
+                  {ledgers.map((ledger) => (
+                    <option key={ledger.reservation} value={ledger.reservation}>
+                      {ledger.reservation.slice(0, 8)}… · {lamportsToSol(availableOffline(ledger))} SOL available
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute top-1/2 right-4 size-5 -translate-y-1/2" aria-hidden="true" />
+              </div>
+            </Field>
 
-          <div className="field-group">
-            <label htmlFor="merchantInput" className="field-label">
-              Merchant wallet
-            </label>
-            <input
-              id="merchantInput"
-              className="text-input"
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              placeholder="Merchant public key"
-            />
-          </div>
+            <Field id="merchantInput" label="Merchant wallet">
+              <input
+                id="merchantInput"
+                className={cn(inputClass, "font-mono text-sm")}
+                value={merchant}
+                onChange={(e) => setMerchant(e.target.value)}
+                placeholder="Merchant public key"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
 
-          <div className="field-group">
-            <label htmlFor="amountInput" className="field-label">
-              Amount (SOL)
-            </label>
-            <input
-              id="amountInput"
-              className="text-input"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
-              placeholder="0.01"
-            />
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="memoInput" className="field-label">
-              Memo (optional)
-            </label>
-            <input
-              id="memoInput"
-              className="text-input"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="Coffee, groceries, etc."
-            />
-          </div>
-
-          <button type="submit" className="primary-button full-width">
-            Sign payment
-          </button>
-
-          {status && (
-            <p
-              className={`status-message ${
-                isErrorStatus
-                  ? "status-error"
-                  : isSuccessStatus
-                  ? "status-success"
-                  : ""
-              }`}
-            >
-              {status}
-            </p>
-          )}
-
-          {payload && intent && (
-            <div className="qr-result">
-              <div className="qr-frame">
-                <QRCodeCanvas
-                  value={payload}
-                  size={220}
-                  level="M"
-                  includeMargin
-                  bgColor="#ffffff"
-                  fgColor="#060b18"
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field id="amountInput" label="Amount (SOL)">
+                <input
+                  id="amountInput"
+                  className={inputClass}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0.01"
                 />
-              </div>
-              <p className="muted mono-caption">
-                Payment{" "}
-                <span className="mono-accent">
-                  {Array.from(intent.paymentId)
-                    .slice(0, 4)
-                    .map((b) => b.toString(16).padStart(2, "0"))
-                    .join("")}…
-                </span>{" "}
-                · sequence {intent.sequence}
-              </p>
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="quiet-button"
-                  onClick={() => void handleCopy()}
-                >
-                  {copySuccess ? "Copied!" : "Copy payload"}
-                </button>
-                <button
-                  type="button"
-                  className="quiet-button"
-                  onClick={handleDownload}
-                >
-                  Download .pat
-                </button>
-              </div>
+              </Field>
+              <Field id="memoInput" label="Memo (optional)">
+                <input
+                  id="memoInput"
+                  className={inputClass}
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  placeholder="Coffee, groceries, etc."
+                />
+              </Field>
             </div>
-          )}
-        </form>
-      </section>
+
+            <PillButton type="submit" size="lg" text="Sign payment" className="w-full" />
+
+            {status && (
+              <StatusNote tone={isErrorStatus ? "error" : isSuccessStatus ? "success" : "neutral"}>{status}</StatusNote>
+            )}
+          </form>
+        </section>
+
+        {payload && intent ? (
+          <section aria-label="Signed payment" className="flex flex-col items-center gap-5 rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
+            <div className="flex w-full items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Show to merchant</span>
+              <span className="rounded-full bg-yellow px-2.5 py-0.5 text-[11px] font-semibold">SIGNED</span>
+            </div>
+            <div className="rounded-[18px] border border-ink/10 bg-white p-3">
+              <QRCodeCanvas value={payload} size={260} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0f0f0e" className="block h-auto max-w-full" />
+            </div>
+            <p className="m-0 text-center font-display text-4xl font-black uppercase leading-none tracking-[-0.05em] [font-stretch:85%]">
+              {lamportsToSol(intent.amount)} SOL
+            </p>
+            <p className="m-0 font-mono text-xs text-muted-foreground">
+              Payment {hexShort}… · sequence {intent.sequence}
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <PillButton type="button" size="sm" tone="light" text={copySuccess ? "Copied!" : "Copy payload"} onClick={() => void handleCopy()} />
+              <PillButton type="button" size="sm" tone="light" text="Download .pat" onClick={handleDownload} />
+            </div>
+          </section>
+        ) : (
+          <section
+            aria-label="Signed payment preview"
+            className="grainy on-dark flex min-h-[420px] flex-col justify-between rounded-[22px] bg-card-dark p-6 text-white"
+          >
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-white/60">Payment intent · 230 B</span>
+            <QrCode className="mx-auto size-28 stroke-[1.2] text-white/85" aria-hidden="true" />
+            <p className="m-0 max-w-xs text-sm leading-relaxed text-white/75">
+              Your signed payment appears here as a QR code. Hand it to the merchant; they settle it when they&rsquo;re online.
+            </p>
+          </section>
+        )}
+      </div>
     </main>
   );
 }
@@ -515,122 +501,101 @@ export function MerchantSettlement() {
     status.startsWith("Connected wallet");
   const isValid = status.startsWith("Signature valid") || status.startsWith("Payment settled");
 
+  const settled = status.startsWith("Payment settled");
+
   return (
-    <main className="workspace page-shell">
-      <div className="workspace-heading">
-        <div>
-          <p className="eyebrow">Merchant mode</p>
-          <h1>Accept offline payment.</h1>
-          <p className="muted">Verify locally, then settle once you are back online.</p>
-        </div>
-      </div>
+    <main className="page">
+      <PageHeading
+        eyebrow="Merchant mode"
+        lines={["Accept", "offline", "payment."]}
+        lede="Verify the signature locally, then settle once you are back online."
+      />
 
-      <div className="merchant-grid">
-        <section className="scanner-card">
-          <header className="card-header">
-            <h3>Camera scanner</h3>
-          </header>
-          <div className="scanner-viewport">
-            <Scanner
-              onScan={(r) => {
-                if (r[0]?.rawValue) consume(r[0].rawValue);
-              }}
-              onError={() =>
-                setStatus("Camera unavailable. Paste the signed payload instead.")
-              }
-            />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section aria-labelledby="scanner-title" className="rounded-[22px] bg-white p-1.5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)]">
+          <div className="grainy on-dark overflow-hidden rounded-[18px] bg-card-dark p-4 text-white">
+            <h2 id="scanner-title" className="m-0 mb-3 flex items-center gap-2 text-sm font-medium text-white/80">
+              <ScanLine className="size-4" aria-hidden="true" /> Camera scanner
+            </h2>
+            <div className="aspect-[4/3] overflow-hidden rounded-[14px] bg-black">
+              <Scanner
+                onScan={(r) => {
+                  if (r[0]?.rawValue) consume(r[0].rawValue);
+                }}
+                onError={() => setStatus("Camera unavailable. Paste the signed payload instead.")}
+              />
+            </div>
           </div>
-
-          <div className="field-group" style={{ marginTop: "16px" }}>
-            <label htmlFor="payloadInput" className="field-label">
-              Or paste payload JSON
-            </label>
-            <textarea
-              id="payloadInput"
-              className="text-input textarea-input"
-              value={raw}
-              onChange={(e) => setRaw(e.target.value)}
-              placeholder='{"intent": {...}, "signature": "..."}'
-              aria-label="Signed payment payload"
-              rows={4}
-            />
+          <div className="flex flex-col gap-4 p-4 sm:p-5">
+            <Field id="payloadInput" label="Or paste payload JSON">
+              <textarea
+                id="payloadInput"
+                className={cn(inputClass, "h-auto min-h-28 resize-y py-3 font-mono text-xs")}
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                placeholder='{"intent": {...}, "signature": "..."}'
+                aria-label="Signed payment payload"
+                rows={4}
+              />
+            </Field>
+            <PillButton type="button" tone="light" text="Verify payment" onClick={() => consume(raw)} className="w-full" />
           </div>
-
-          <button
-            type="button"
-            className="quiet-button full-width"
-            onClick={() => consume(raw)}
-            style={{ marginTop: "12px" }}
-          >
-            Verify payment
-          </button>
         </section>
 
-        <section className="card settlement-summary">
-          <header className="card-header">
-            <h3>Settlement status</h3>
-            {parsed && <span className="pill status-signed">Verified</span>}
-          </header>
-
-          <p
-            className={`status-message ${
-              isError ? "status-error" : isValid ? "status-success" : ""
-            }`}
+        <PricingCard.Card className="max-w-none self-start rounded-[22px] bg-white p-1.5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)]">
+          <PricingCard.Header
+            className={cn("grainy mb-2 rounded-[18px] border-0 p-5", settled ? "bg-blue" : parsed ? "bg-yellow" : "bg-stone")}
+            glassEffect={false}
           >
-            {status}
-          </p>
+            <PricingCard.Plan className="mb-10">
+              <PricingCard.PlanName className="text-ink">
+                <span>Settlement</span>
+              </PricingCard.PlanName>
+              <PricingCard.Badge className="border-ink/25 bg-white/55 font-semibold text-ink">
+                {settled ? "Confirmed" : parsed ? "Offline accepted" : "Awaiting payment"}
+              </PricingCard.Badge>
+            </PricingCard.Plan>
+            <PricingCard.Price className="flex-wrap gap-x-3">
+              <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-[-0.05em] [font-stretch:85%]">
+                {parsed ? lamportsToSol(parsed.amount) : <span className="text-ink/20">0.00</span>}
+              </PricingCard.MainPrice>
+              <PricingCard.Period className="text-ink/75">SOL payment amount</PricingCard.Period>
+            </PricingCard.Price>
+          </PricingCard.Header>
 
-          {parsed ? (
-            <div className="verified-details">
-              <div className="balance-display" style={{ margin: "16px 0" }}>
-                <div className="balance-amount">
-                  {lamportsToSol(parsed.amount)} <span>SOL</span>
-                </div>
-                <div className="balance-label">payment amount</div>
-              </div>
+          <PricingCard.Body className="space-y-5">
+            <StatusNote tone={isError ? "error" : isValid ? "success" : "neutral"}>{status}</StatusNote>
 
-              <div className="ledger-metrics-table-wrapper">
-                <table className="ledger-table">
-                  <tbody>
-                    <tr>
-                      <td>Payer</td>
-                      <td className="align-right mono-accent">
-                        {shortKey(parsed.payer.toBase58())}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Merchant</td>
-                      <td className="align-right mono-accent">
-                        {shortKey(parsed.merchant.toBase58())}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Sequence</td>
-                      <td className="align-right mono-accent">
-                        {parsed.sequence}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <button
-                type="button"
-                className="primary-button full-width"
-                disabled={settling}
-                onClick={() => void settle()}
-              >
-                {settling ? "Settling…" : "Settle payment on-chain"}
-              </button>
-            </div>
-          ) : (
-            <div className="empty-state" style={{ marginTop: "16px", padding: "40px 16px" }}>
-              <p className="muted" style={{ margin: 0 }}>
-                Scan or paste a payload to preview settlement options.
-              </p>
-            </div>
-          )}
-        </section>
+            {parsed ? (
+              <>
+                <PricingCard.List>
+                  {[
+                    ["Payer", shortKey(parsed.payer.toBase58())],
+                    ["Merchant", shortKey(parsed.merchant.toBase58())],
+                    ["Sequence", String(parsed.sequence)],
+                  ].map(([label, value]) => (
+                    <PricingCard.ListItem key={label} className="justify-between border-b border-ink/8 pb-3">
+                      <span>{label}</span>
+                      <span className="font-mono text-ink">{value}</span>
+                    </PricingCard.ListItem>
+                  ))}
+                </PricingCard.List>
+                <PillButton
+                  type="button"
+                  size="lg"
+                  className="w-full"
+                  disabled={settling}
+                  onClick={() => void settle()}
+                  text={settling ? "Settling…" : "Settle on-chain"}
+                />
+              </>
+            ) : (
+              <PricingCard.Description className="text-sm">
+                Scan or paste a payload to preview settlement. Offline Accepted is your risk decision; Confirmed is the chain&rsquo;s.
+              </PricingCard.Description>
+            )}
+          </PricingCard.Body>
+        </PricingCard.Card>
       </div>
     </main>
   );
