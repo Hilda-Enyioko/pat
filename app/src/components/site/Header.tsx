@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Boxes, Globe2, Menu, MoveRight, Wifi, WifiOff, X } from "lucide-react";
-import { CLUSTER, PROGRAM_ID, RPC_URL } from "@/config";
+import { Menu, MoveRight, Wifi, WifiOff, X } from "lucide-react";
+import { CLUSTER, PROGRAM_ID } from "@/config";
 import { shortKey } from "@/lib/format";
 import { APP_VIEWS, FAUCET_URL, SOURCE_URL, type View } from "@/lib/views";
 import { Logo } from "./Logo";
@@ -63,30 +63,11 @@ export function Header({
     onNavigate(next);
   };
   const cta = () => (publicKey ? go("ledger") : onConnect());
-  const host = new URL(RPC_URL).host;
-  const programId = PROGRAM_ID.toBase58();
   const netLabel = online ? "Online" : "Offline";
 
   return (
     <header className="hdr" ref={headerRef} data-open={open || undefined}>
       <div className="util">
-        <a className="ph p1" href={`https://explorer.solana.com/?cluster=${CLUSTER}`} target="_blank" rel="noreferrer">
-          <Globe2 aria-hidden="true" />
-          <span>
-            Solana network : <b>{CLUSTER}</b>
-            <br />
-            {host}
-          </span>
-        </a>
-        <span className="vr" aria-hidden="true" />
-        <a className="ph p2" href={explorerUrl} target="_blank" rel="noreferrer">
-          <Boxes aria-hidden="true" />
-          <span>
-            PAT program :
-            <br />
-            {shortKey(programId)}
-          </span>
-        </a>
         <span className="net" data-offline={!online || undefined}>
           <i aria-hidden="true" />
           {netLabel}

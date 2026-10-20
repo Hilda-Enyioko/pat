@@ -63,22 +63,6 @@ html.tab-l {
     border-bottom: 1px solid var(--nav-line);
     background: var(--nav-bar);
   }
-  .util .ph {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    font-size: 11px;
-    line-height: 1.18;
-    color: var(--nav-fg);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-  .util .ph svg { width: 16px; height: 16px; flex: none; }
-  .util .ph b { font-weight: 600; }
-  .util .ph:hover { color: var(--nav-muted); }
-  .util .p1 { width: 289px; }
-  .util .vr { position: absolute; left: 313px; top: 9px; bottom: 9px; width: 1px; background: var(--nav-rule); }
-  .util .p2 { margin-left: 24px; }
   .util .net {
     display: inline-flex;
     align-items: center;
@@ -551,10 +535,6 @@ html.tab-l {
 
   /* ---------- Header per mode ---------- */
   html.tab .cta { margin-left: 24px; }
-  @media (max-width: 760px) {
-    html.tab .util .p2,
-    html.tab .util .vr { display: none; }
-  }
   html.mob .hdr { height: calc(var(--hh) + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
   html.mob .util,
   html.mob .cta { display: none; }
