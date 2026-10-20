@@ -35,10 +35,6 @@ export function Landing({
             </span>
           ))}
         </h1>
-        <p>
-          PAT locks a bounded allowance on Solana while you&rsquo;re online, so you can sign payments with{" "}
-          <b>no signal at all</b> and merchants settle when they reconnect. Self-custodial, live on devnet.
-        </p>
         <div className="acts">
           <div className="tk">
             <PillButton size="lg" text={cta} onClick={onStart} />

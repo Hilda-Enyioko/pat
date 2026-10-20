@@ -32,13 +32,11 @@ export function playEntrance(stage: HTMLElement): void {
 
   anims.push(
     ...run(all(".hdr"), [{ transform: "translateY(calc(-100% - 48px))" }, { transform: "none" }], { duration: 950, easing: EXPO }),
-    ...run(all(".util > *"), [{ opacity: 0 }, { opacity: 1 }], { duration: 500, delay: 320, easing: QUART }, 60),
     ...run(all(".logo"), [{ opacity: 0, transform: "translateY(-10px)" }, { opacity: 1, transform: "none" }], { duration: 700, delay: 380, easing: EXPO }),
     ...run(all(".menu-btn"), [{ opacity: 0, transform: "translateY(-8px)" }, { opacity: 1, transform: "none" }], { duration: 650, delay: 440, easing: EXPO }, 45),
     ...run(all(".cta"), [{ opacity: 0, transform: "translateY(-8px)" }, { opacity: 1, transform: "none" }], { duration: 700, delay: 620, easing: EXPO }),
     ...run(all(".hero .ln > span"), [{ transform: "translateY(110%)" }, { transform: "none" }], { duration: 1000, delay: 300, easing: EXPO }, 85),
-    ...run(all(".hero p"), [{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 900, delay: 720, easing: QUART }),
-    ...run(all(".hero .acts > *"), [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 900, delay: 840, easing: QUART }, 90),
+    ...run(all(".hero .acts > *"), [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 900, delay: 720, easing: QUART }, 90),
   );
 
   const t0 = performance.now();

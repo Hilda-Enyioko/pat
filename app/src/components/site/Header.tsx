@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Menu, MoveRight, Wifi, WifiOff, X } from "lucide-react";
+import { Menu, MoveRight, X } from "lucide-react";
 import { CLUSTER, PROGRAM_ID } from "@/config";
 import { shortKey } from "@/lib/format";
 import { APP_VIEWS, FAUCET_URL, SOURCE_URL, type View } from "@/lib/views";
 import { Logo } from "./Logo";
-import { CircleButton, PillButton } from "./Pill";
+import { NetworkToggle } from "./NetworkToggle";
+import { PillButton } from "./Pill";
 
 const explorerUrl = `https://explorer.solana.com/address/${PROGRAM_ID.toBase58()}?cluster=${CLUSTER}`;
 
@@ -67,23 +68,6 @@ export function Header({
 
   return (
     <header className="hdr" ref={headerRef} data-open={open || undefined}>
-      <div className="util">
-        <span className="net" data-offline={!online || undefined}>
-          <i aria-hidden="true" />
-          {netLabel}
-        </span>
-        <button
-          type="button"
-          className="srch"
-          data-offline={!online || undefined}
-          onClick={onToggleOnline}
-          aria-label={`Network mode is ${netLabel}. Switch to ${online ? "offline" : "online"} mode`}
-          title={`Switch to ${online ? "offline" : "online"} mode`}
-        >
-          {online ? <Wifi aria-hidden="true" /> : <WifiOff aria-hidden="true" />}
-        </button>
-      </div>
-
       <div className="mrow">
         <Logo onClick={() => go("landing")} />
         <button
@@ -105,7 +89,7 @@ export function Header({
         </button>
         <div className="cta">
           <PillButton size="lg" text={publicKey ? shortKey(publicKey) : "Connect"} onClick={cta} aria-label={publicKey ? "Open your ledger" : "Connect wallet"} />
-          <CircleButton label={publicKey ? "Open your ledger" : "Connect wallet"} onClick={cta} />
+          <NetworkToggle online={online} onToggle={onToggleOnline} />
         </div>
       </div>
 
