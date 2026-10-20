@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
@@ -31,7 +31,13 @@ import { PageHeading } from "./site/PageHeading";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
 
-export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
+export function SignPayment({
+  ledgers,
+  lockedCount = 0,
+}: {
+  ledgers: OfflineLedger[];
+  lockedCount?: number;
+}) {
   const { publicKey, signMessage } = useWallet();
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("0.01");
@@ -41,6 +47,12 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
   const [intent, setIntent] = useState<SignedIntentPayload | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  useEffect(() => {
+    if (!ledgers.some((l) => l.reservation === selected)) {
+      setSelected(ledgers[0]?.reservation ?? "");
+    }
+  }, [ledgers, selected]);
 
   async function signPayment() {
     let paymentId = "";
@@ -184,7 +196,13 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
                   value={selected}
                   onChange={(e) => setSelected(e.target.value)}
                 >
-                  {ledgers.length === 0 && <option value="">No active reservations found</option>}
+                  {ledgers.length === 0 && (
+                    <option value="">
+                      {lockedCount > 0
+                        ? "Restored reservations cannot sign here. Reserve on this device."
+                        : "No active reservations found"}
+                    </option>
+                  )}
                   {ledgers.map((ledger) => (
                     <option key={ledger.reservation} value={ledger.reservation}>
                       {ledger.reservation.slice(0, 8)}… · {lamportsToSol(availableOffline(ledger))} SOL available
@@ -392,13 +410,11 @@ export function MerchantSettlement() {
       console.groupEnd();
 
       if (sim.value.err) {
-        console.error("❌ Simulation Failed:", sim.value.err);
-        if (sim.value.logs) {
-          console.error("Logs leading to failure:\n" + sim.value.logs.join("\n"));
-        }
-        throw new Error(
+        const simError = new Error(
           `Simulation failed: ${JSON.stringify(sim.value.err)}. Check console for full program logs.`
-        );
+        ) as Error & { logs?: string[] };
+        simError.logs = sim.value.logs ?? undefined;
+        throw simError;
       }
 
       // -------------------------------------------------------------------------

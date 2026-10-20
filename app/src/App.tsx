@@ -12,7 +12,9 @@ import { Header } from "./components/site/Header";
 import { HowItWorks } from "./components/site/HowItWorks";
 import { PageHeading } from "./components/site/PageHeading";
 import { PillButton } from "./components/site/Pill";
-import { listLedgers, type OfflineLedger } from "./lib/ledger";
+import { WalletHistory } from "./components/WalletHistory";
+import { isLocked, isSignable, listLedgers, type OfflineLedger } from "./lib/ledger";
+import { useWalletHistory } from "./hooks/useWalletHistory";
 import { validViews, type View } from "./lib/views";
 import { useNetwork } from "./hooks/useNetwork";
 import { readOfflinePref, setAppOffline, writeOfflinePref } from "./lib/network";
@@ -87,6 +89,8 @@ function AppContent() {
     setLedgers(publicKey ? await listLedgers(publicKey.toBase58()) : []);
   }, [publicKey]);
 
+  const { history, loading, error, ready, refresh: refreshHistory } = useWalletHistory(online, reload);
+
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -109,16 +113,15 @@ function AppContent() {
     }
   }, [publicKey, view, setView]);
 
-  // Once connected, transition from connect page to ledger/reserve
+  // Once connected and the chain history is read, transition from connect page to ledger/reserve
   useEffect(() => {
-    if (!publicKey) return;
+    if (!publicKey || view !== "connect" || !ready) return;
     void listLedgers(publicKey.toBase58()).then((items) => {
       setLedgers(items);
-      if (view === "connect") {
-        setView(items.length ? "ledger" : "reserve");
-      }
+      const hasChainReservations = (history?.reservations.length ?? 0) > 0;
+      setView(items.length || hasChainReservations ? "ledger" : "reserve");
     });
-  }, [publicKey, view, setView]);
+  }, [publicKey, view, ready, history, setView]);
 
   // Determine view to render: fall back to "connect" if unauthenticated
   const guardedView =
@@ -135,6 +138,8 @@ function AppContent() {
   };
 
   const openWalletModal = () => setWalletModalVisible(true);
+  const syncing = loading || !ready;
+  const hasHistory = (history?.timeline.length ?? 0) > 0;
   const start = () => (publicKey ? setView("ledger") : setView("connect"));
 
   const header = (
@@ -188,24 +193,54 @@ function AppContent() {
           aside={<PillButton size="lg" text="Reserve funds" onClick={() => setView("reserve")} />}
         />
         {ledgers.length === 0 ? (
-          <section className="grainy flex flex-col items-start gap-6 rounded-[22px] bg-red p-6 sm:p-10">
-            <h2 className="display-h text-[clamp(36px,5vw,64px)]">
-              Your ledger
-              <br />
-              is waiting.
-            </h2>
-            <p className="m-0 max-w-md text-[17px] leading-relaxed">
-              Create your first reservation to see your available offline balance here.
-            </p>
-            <PillButton size="lg" text="Create reservation" onClick={() => setView("reserve")} />
-          </section>
+          syncing ? (
+            <section className="grainy flex flex-col items-start gap-4 rounded-[22px] bg-blue p-6 sm:p-10">
+              <h2 className="display-h text-[clamp(32px,4.4vw,56px)]">Reading your history…</h2>
+              <p className="m-0 max-w-md text-[17px] leading-relaxed">Looking up this wallet on {CLUSTER}.</p>
+            </section>
+          ) : (
+            <section className="grainy flex flex-col items-start gap-6 rounded-[22px] bg-red p-6 sm:p-10">
+              <h2 className="display-h text-[clamp(36px,5vw,64px)]">
+                {hasHistory ? (
+                  <>
+                    No active
+                    <br />
+                    reservations.
+                  </>
+                ) : (
+                  <>
+                    Your ledger
+                    <br />
+                    is waiting.
+                  </>
+                )}
+              </h2>
+              <p className="m-0 max-w-md text-[17px] leading-relaxed">
+                {hasHistory
+                  ? "Create a new reservation to spend offline again."
+                  : "Create your first reservation to see your available offline balance here."}
+              </p>
+              <PillButton size="lg" text="Create reservation" onClick={() => setView("reserve")} />
+            </section>
+          )
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-2">
             {ledgers.map((ledger) => (
-              <LedgerPanel key={ledger.reservation} ledger={ledger} online={online} onChange={() => void reload()} />
+              <LedgerPanel
+                key={ledger.reservation}
+                ledger={ledger}
+                online={online}
+                onChange={() => void reload()}
+                onWithdrawn={() => {
+                  void reload();
+                  void refreshHistory();
+                }}
+              />
             ))}
           </div>
         )}
+
+        <WalletHistory history={history} loading={loading} error={error} online={online} onRefresh={() => void refreshHistory()} />
       </main>
     );
   } else if (guardedView === "reserve") {
@@ -225,13 +260,16 @@ function AppContent() {
         <ReserveForm
           onCreated={() => {
             void reload();
+            void refreshHistory();
             setView("ledger");
           }}
         />
       </main>
     );
   } else if (guardedView === "sign") {
-    content = <SignPayment ledgers={ledgers} />;
+    const signable = ledgers.filter(isSignable);
+    const lockedCount = ledgers.filter(isLocked).length;
+    content = <SignPayment ledgers={signable} lockedCount={lockedCount} />;
   } else {
     content = <MerchantSettlement />;
   }
