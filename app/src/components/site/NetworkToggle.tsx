@@ -3,7 +3,7 @@ import { Wifi, WifiOff } from "lucide-react";
 
 const SHOW_MS = 1500;
 
-/** Round online/offline switch: on click it stretches down to announce the new mode, then shrinks back. */
+/** Round online/offline switch: on click it stretches sideways to announce the new mode, then shrinks back. */
 export function NetworkToggle({ online, onToggle }: { online: boolean; onToggle: () => void }) {
   const [flash, setFlash] = useState(false);
   const timer = useRef<number | undefined>(undefined);
