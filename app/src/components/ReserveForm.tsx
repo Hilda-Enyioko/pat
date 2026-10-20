@@ -13,6 +13,7 @@ import {
   RESERVATION_SPACE,
 } from "../lib/pat";
 import { initLedgerIfAbsent } from "../lib/ledger";
+import { OfflineModeError } from "../lib/network";
 import { lamportsToSol, solToLamports } from "../lib/format";
 import { Field, inputClass } from "./site/Field";
 import { PillButton } from "./site/Pill";
@@ -145,7 +146,11 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
       setStatus("Airdrop confirmed. Your devnet wallet is funded.");
     } catch (error) {
       console.error(error);
-      setStatus("Devnet faucet is rate-limited right now. Try again later or use faucet.solana.com.");
+      setStatus(
+        error instanceof OfflineModeError
+          ? error.message
+          : "Devnet faucet is rate-limited right now. Try again later or use faucet.solana.com."
+      );
     }
   }
 

@@ -141,7 +141,8 @@ html.tab-l {
   .net-btn:hover { transform: scale(1.04); }
   .net-btn:active { transform: scale(0.96); }
   .net-btn[data-offline] { background: var(--yellow); color: var(--ink); }
-  .net-btn[data-flash] { width: 146px; transform: none; }
+  .net-btn[data-nonet] { background: var(--red); color: #fff; }
+  .net-btn[data-flash] { width: var(--open-w, 146px); transform: none; }
   .net-btn .ic { position: relative; display: block; flex: none; width: 24px; height: 24px; }
   .net-btn .ic svg {
     position: absolute;

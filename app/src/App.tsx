@@ -14,7 +14,8 @@ import { PageHeading } from "./components/site/PageHeading";
 import { PillButton } from "./components/site/Pill";
 import { listLedgers, type OfflineLedger } from "./lib/ledger";
 import { validViews, type View } from "./lib/views";
-import { useOnline } from "./hooks/useOnline";
+import { useNetwork } from "./hooks/useNetwork";
+import { readOfflinePref, setAppOffline, writeOfflinePref } from "./lib/network";
 import { CLUSTER, RPC_URL } from "./config";
 
 const viewVariants: Variants = {
@@ -43,17 +44,27 @@ function useOfflineReady() {
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
-  const { online: systemOnline } = useOnline();
-  const [manualOnline, setManualOnline] = useState<boolean | null>(null);
+  const reachable = useNetwork();
+  const [offlinePref, setOfflinePref] = useState(readOfflinePref);
   const [howOpen, setHowOpen] = useState(false);
   const offlineReady = useOfflineReady();
 
-  // If the user manually toggled the mode, honor manualOnline; otherwise follow browser network state
-  const online = manualOnline ?? systemOnline;
+  // Online only when the network is really there AND the user hasn't chosen offline mode.
+  // Losing the connection flips this automatically; it flips back when the
+  // connection returns, unless the user picked offline mode themselves.
+  const online = reachable && !offlinePref;
+  // Set during render, not in an effect: children's effects (ledger sync) run
+  // before ours and must already see the right mode.
+  setAppOffline(!online);
 
   const toggleOnline = useCallback(() => {
-    setManualOnline((prev) => !(prev ?? systemOnline));
-  }, [systemOnline]);
+    // With no network there is nothing to switch to; the toggle just reports it.
+    if (!reachable) return;
+    setOfflinePref((prev) => {
+      writeOfflinePref(!prev);
+      return !prev;
+    });
+  }, [reachable]);
 
   // Initialize view from URL path
   const [view, setViewState] = useState<View>(() => {
@@ -132,6 +143,7 @@ function AppContent() {
       onNavigate={setView}
       publicKey={publicKey?.toBase58() ?? null}
       online={online}
+      reachable={reachable}
       onToggleOnline={toggleOnline}
       onConnect={openWalletModal}
       onDisconnect={disconnectWallet}

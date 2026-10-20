@@ -14,6 +14,7 @@ export function Header({
   onNavigate,
   publicKey,
   online,
+  reachable,
   onToggleOnline,
   onConnect,
   onDisconnect,
@@ -23,6 +24,7 @@ export function Header({
   onNavigate: (view: View) => void;
   publicKey: string | null;
   online: boolean;
+  reachable: boolean;
   onToggleOnline: () => void;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -64,7 +66,7 @@ export function Header({
     onNavigate(next);
   };
   const cta = () => (publicKey ? go("ledger") : onConnect());
-  const netLabel = online ? "Online" : "Offline";
+  const netLabel = online ? "Online" : reachable ? "Offline" : "No network";
 
   return (
     <header className="hdr" ref={headerRef} data-open={open || undefined}>
@@ -89,7 +91,7 @@ export function Header({
         </button>
         <div className="cta">
           <PillButton size="lg" text={publicKey ? shortKey(publicKey) : "Connect"} onClick={cta} aria-label={publicKey ? "Open your ledger" : "Connect wallet"} />
-          <NetworkToggle online={online} onToggle={onToggleOnline} />
+          <NetworkToggle online={online} reachable={reachable} onToggle={onToggleOnline} />
         </div>
       </div>
 
@@ -137,8 +139,8 @@ export function Header({
           >
             How it works
           </button>
-          <button type="button" onClick={onToggleOnline}>
-            Mode: {netLabel} (switch)
+          <button type="button" onClick={onToggleOnline} disabled={!reachable}>
+            {reachable ? `Mode: ${netLabel} (switch)` : "No network: offline"}
           </button>
           <a href={FAUCET_URL} target="_blank" rel="noreferrer">Devnet faucet</a>
           <a href={explorerUrl} target="_blank" rel="noreferrer">Program explorer</a>
