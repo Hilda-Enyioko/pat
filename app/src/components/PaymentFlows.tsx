@@ -24,7 +24,13 @@ import {
 import { buildSettleIx, mapProgramError } from "../lib/pat";
 import { lamportsToSol, solToLamports, shortKey } from "../lib/format";
 
-export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
+export function SignPayment({
+  ledgers,
+  lockedCount = 0,
+}: {
+  ledgers: OfflineLedger[];
+  lockedCount?: number;
+}) {
   const { publicKey, signMessage } = useWallet();
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("0.01");
@@ -180,7 +186,11 @@ export function SignPayment({ ledgers }: { ledgers: OfflineLedger[] }) {
               onChange={(e) => setSelected(e.target.value)}
             >
               {ledgers.length === 0 && (
-                <option value="">No active reservations found</option>
+                <option value="">
+                {lockedCount > 0
+                ? "Restored reservations cannot sign here. Reserve on this device."
+                : "No active reservations found"}
+                </option>
               )}
               {ledgers.map((ledger) => (
                 <option key={ledger.reservation} value={ledger.reservation}>

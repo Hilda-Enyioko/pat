@@ -9,7 +9,7 @@ import { ReserveForm } from "./components/ReserveForm";
 import { LedgerPanel } from "./components/LedgerPanel";
 import { MerchantSettlement, SignPayment } from "./components/PaymentFlows";
 import { WalletHistory } from "./components/WalletHistory";
-import { listLedgers, nowAdjusted, type OfflineLedger } from "./lib/ledger";
+import { isLocked, isSignable, listLedgers, type OfflineLedger } from "./lib/ledger";
 import { shortKey } from "./lib/format";
 import { useOnline } from "./hooks/useOnline";
 import { useWalletHistory } from "./hooks/useWalletHistory";
@@ -426,6 +426,10 @@ function AppContent() {
               ledger={ledger}
               online={online}
               onChange={() => void reload()}
+              onWithdrawn={() => {
+                void reload();
+                void refreshHistory();
+              }}
             />
           ))
         )}
@@ -463,8 +467,9 @@ function AppContent() {
       </main>
     );
   } else if (guardedView === "sign") {
-    const signable = ledgers.filter((l) => !l.withdrawn && nowAdjusted(l) < l.expiresAt);
-    content = <SignPayment ledgers={signable} />;
+    const signable = ledgers.filter(isSignable);
+    const lockedCount = ledgers.filter(isLocked).length;
+    content = <SignPayment ledgers={signable} lockedCount={lockedCount} />;
   } else {
     content = <MerchantSettlement />;
   }

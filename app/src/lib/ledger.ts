@@ -76,6 +76,7 @@ export interface OfflineLedger {
 
 export type LedgerErrorCode =
   | "NO_LEDGER"
+  | "LEDGER_LOCKED"
   | "RESERVATION_EXPIRED"
   | "ZERO_AMOUNT"
   | "OVER_PER_PAYMENT_CAP"
@@ -100,7 +101,7 @@ export const pendingTotal = (l: OfflineLedger): bigint =>
   l.pending.reduce((sum, p) => sum + BigInt(p.amount), 0n);
 
 export const availableOffline = (l: OfflineLedger): bigint => {
-  if (l.withdrawn) return 0n;
+  if (l.withdrawn || l.restoredFromChain) return 0n;
   const v = BigInt(l.capacity) - BigInt(l.committedOnChain) - pendingTotal(l);
   return v > 0n ? v : 0n;
 };
@@ -112,6 +113,17 @@ export const phaseOf = (l: OfflineLedger, now: number): Phase =>
 
 export const nowAdjusted = (l: OfflineLedger): number =>
   Math.floor(Date.now() / 1000) + (l.clockOffset ?? 0);
+
+export const isLocked = (l: OfflineLedger): boolean => Boolean(l.restoredFromChain) && !l.withdrawn;
+
+export const isSignable = (l: OfflineLedger): boolean =>
+  !l.withdrawn && !l.restoredFromChain && nowAdjusted(l) < l.expiresAt;
+
+export const isReleasable = (l: OfflineLedger, now = nowAdjusted(l)): boolean =>
+  !l.withdrawn && now > l.settleDeadline;
+
+export const releasesIn = (l: OfflineLedger, now = nowAdjusted(l)): number =>
+  Math.max(0, l.settleDeadline + 1 - now);
 
 export const randomPaymentIdHex = (): string =>
   Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -155,7 +167,14 @@ export function initLedgerIfAbsent(
 ): Promise<OfflineLedger> {
   return withLock(async () => {
     const existing = await store.getItem<OfflineLedger>(reservation);
-    if (existing) return migrate(existing);
+    if (existing) {
+      const m = migrate(existing);
+      if (m.restoredFromChain) {
+        m.restoredFromChain = false;
+        await store.setItem(reservation, m);
+      }
+      return m;
+    }
     const ledger: OfflineLedger = {
       reservation,
       owner: acct.owner.toBase58(),
@@ -195,6 +214,12 @@ export function debitForPayment(
     const raw = await store.getItem<OfflineLedger>(reservation);
     if (!raw) throw new LedgerError("NO_LEDGER");
     const l = migrate(raw);
+    if (l.restoredFromChain) {
+      throw new LedgerError(
+        "LEDGER_LOCKED",
+        "Reservation was restored from chain. Signing is disabled on this device."
+      );
+    }
     if (l.withdrawn || now >= l.expiresAt) throw new LedgerError("RESERVATION_EXPIRED");
     if (req.amount <= 0n) throw new LedgerError("ZERO_AMOUNT");
     if (req.amount > BigInt(l.perPaymentCap)) throw new LedgerError("OVER_PER_PAYMENT_CAP");
