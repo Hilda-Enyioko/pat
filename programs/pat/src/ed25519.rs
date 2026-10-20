@@ -8,12 +8,12 @@ use solana_sdk_ids::ed25519_program;
 use crate::error::PatError;
 
 /// Ed25519 precompile instruction data layout:
-///   [0]    num_signatures (u8)
-///   [1]    padding
-///   [2..16] Ed25519SignatureOffsets, seven u16 LE fields:
-///           signature_offset, signature_ix_index,
-///           public_key_offset, public_key_ix_index,
-///           message_offset, message_size, message_ix_index
+///   [0]      num_signatures (u8)
+///   [1]      padding
+///   [2..16]  Ed25519SignatureOffsets, seven u16 LE fields:
+///            signature_offset, signature_ix_index,
+///            public_key_offset, public_key_ix_index,
+///            message_offset, message_size, message_ix_index
 const OFFSETS_START: usize = 2;
 const HEADER_LEN: usize = 16;
 const SELF_IX: u16 = u16::MAX;
@@ -28,8 +28,11 @@ fn u16_at(data: &[u8], at: usize) -> Result<u16> {
 }
 
 fn slice_at(data: &[u8], off: usize, len: usize) -> Result<&[u8]> {
-    let end = off.checked_add(len).ok_or(error!(PatError::InvalidSignature))?;
-    data.get(off..end).ok_or(error!(PatError::InvalidSignature))
+    let end = off
+        .checked_add(len)
+        .ok_or(error!(PatError::InvalidSignature))?;
+    data.get(off..end)
+        .ok_or(error!(PatError::InvalidSignature))
 }
 
 /// Pure check of the precompile instruction's data. The runtime has already
@@ -63,8 +66,14 @@ pub fn check_ed25519_ix_data(
     let pubkey = slice_at(data, pk_off, PUBKEY_LEN)?;
     let message = slice_at(data, msg_off, msg_size)?;
 
-    require!(pubkey == expected_signer.as_ref(), PatError::InvalidSignature);
-    require!(message == expected_message, PatError::InvalidSignature);
+    require!(
+        pubkey == expected_signer.as_ref(),
+        PatError::InvalidSignature
+    );
+    require!(
+        message == expected_message,
+        PatError::InvalidSignature
+    );
     Ok(())
 }
 
@@ -80,11 +89,17 @@ pub fn verify_ed25519_intent(
 
     // Must be called as a top-level instruction of this program (not via CPI).
     let me = load_instruction_at_checked(current, ix_sysvar)?;
-    require_keys_eq!(me.program_id, crate::ID, PatError::InvalidSignature);
+    require!(
+        me.program_id.as_ref() == crate::ID.as_ref(),
+        PatError::InvalidSignature
+    );
 
     // The precompile instruction must sit IMMEDIATELY before settle.
     let ed = load_instruction_at_checked(current - 1, ix_sysvar)?;
-    require_keys_eq!(ed.program_id, ed25519_program::ID, PatError::InvalidSignature);
+    require!(
+        ed.program_id.as_ref() == ed25519_program::ID.as_ref(),
+        PatError::InvalidSignature
+    );
 
     check_ed25519_ix_data(&ed.data, expected_signer, expected_message)
 }
@@ -118,7 +133,9 @@ mod tests {
         d
     }
 
-    fn signer() -> Pubkey { Pubkey::new_from_array([7u8; 32]) }
+    fn signer() -> Pubkey {
+        Pubkey::new_from_array([7u8; 32])
+    }
     const MSG: &[u8] = b"PAT-INTENT-v1-test-message";
 
     #[test]
@@ -158,7 +175,6 @@ mod tests {
     fn rejects_truncated_and_out_of_bounds() {
         let d = build(&[7u8; 32], &[9u8; 64], MSG, [SELF_IX; 3]);
         assert_eq!(code(check_ed25519_ix_data(&d[..10], &signer(), MSG)), INVALID_SIG);
-        // Cut the message short so message_size points past the end.
         assert_eq!(code(check_ed25519_ix_data(&d[..d.len() - 3], &signer(), MSG)), INVALID_SIG);
     }
 }
