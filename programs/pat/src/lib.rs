@@ -5,11 +5,13 @@ pub mod error;
 pub mod instructions;
 pub mod state;
 pub mod ed25519;
+pub mod events;
 
 pub use constants::*;
 pub use state::*;
 pub use error::*;
 pub use instructions::*;
+pub use events::*;
 
 declare_id!("HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh");
 

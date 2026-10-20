@@ -4,6 +4,7 @@ use anchor_lang::system_program::{transfer, Transfer};
 use crate::constants::*;
 use crate::error::PatError;
 use crate::state::*;
+use crate::events::ReservationCreated;
 
 #[derive(Accounts)]
 #[instruction(reservation_id: u64)]
@@ -81,6 +82,19 @@ pub fn handle_reserve(
         ctx.accounts.reservation.to_account_info().lamports() >= required,
         PatError::LamportInvariantBroken
     );
+
+    emit!(ReservationCreated {
+        reservation: ctx.accounts.reservation.key(),
+        owner: ctx.accounts.owner.key(),
+        reservation_id,
+        capacity,
+        per_payment_cap,
+        rent_reserve,
+        max_payments,
+        created_at: now,
+        expires_at,
+        settle_deadline,
+    });
 
     Ok(())
 }

@@ -4,6 +4,7 @@ use crate::constants::*;
 use crate::ed25519::verify_ed25519_intent;
 use crate::error::PatError;
 use crate::state::*;
+use crate::events::PaymentSettled;
 
 #[derive(Accounts)]
 #[instruction(intent: PaymentIntent)]
@@ -123,13 +124,29 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
     let r = &ctx.accounts.reservation;
     let required = rent
         .minimum_balance(Reservation::SPACE)
-        .checked_add(r.capacity - r.committed) // committed <= capacity by commit()
+        .checked_add(r.capacity - r.committed)
         .and_then(|v| v.checked_add(r.rent_reserve))
         .ok_or(error!(PatError::Overflow))?;
     require!(
         reservation_info.lamports() >= required,
         PatError::LamportInvariantBroken
     );
+
+    emit!(PaymentSettled {
+        reservation: reservation_key,
+        payment: ctx.accounts.payment.key(),
+        payment_id: intent.payment_id,
+        payer: intent.payer,
+        merchant: intent.merchant,
+        settler: ctx.accounts.settler.key(),
+        amount: intent.amount,
+        sequence: intent.sequence,
+        intent_created_at: intent.created_at,
+        settled_at: now,
+        settled_slot: clock.slot,
+        committed_total: r.committed,
+        payments_settled: r.payments_settled,
+    });
 
     Ok(())
 }

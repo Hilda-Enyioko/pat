@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 use crate::constants::*;
 use crate::error::PatError;
 use crate::state::*;
+use crate::events::ReservationWithdrawn;
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
@@ -49,6 +50,21 @@ pub fn handle_withdraw(ctx: Context<Withdraw>) -> Result<()> {
         ctx.accounts.reservation.to_account_info().lamports() >= required,
         PatError::LamportInvariantBroken
     );
+
+    let refunded_lamports = ctx.accounts.reservation.to_account_info().lamports();
+
+    emit!(ReservationWithdrawn {
+        reservation: ctx.accounts.reservation.key(),
+        owner: ctx.accounts.owner.key(),
+        reservation_id: r.reservation_id,
+        capacity: r.capacity,
+        committed: r.committed,
+        payments_settled: r.payments_settled,
+        unused_capacity: r.remaining(),
+        unused_rent_reserve: r.rent_reserve,
+        refunded_lamports,
+        withdrawn_at: now,
+    });
 
     Ok(())
 }
