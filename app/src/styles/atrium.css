@@ -62,8 +62,8 @@ html.tab-l {
   }
   .logo {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    gap: 12px;
     padding: 0;
     border: 0;
     background: none;
@@ -71,6 +71,8 @@ html.tab-l {
     text-align: left;
     cursor: pointer;
   }
+  .logo .mk { display: block; flex: none; width: auto; height: 40px; }
+  .logo .wt { display: flex; flex-direction: column; gap: 6px; }
   .logo .wm {
     font-family: var(--display);
     font-size: 31px;
@@ -546,7 +548,9 @@ html.tab-l {
   html.mob .hdr { height: calc(var(--hh) + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
   html.mob .cta { display: none; }
   html.mob .mrow { padding: 0 8px 0 18px; }
-  html.mob .logo { gap: 4px; }
+  html.mob .logo { gap: 9px; }
+  html.mob .logo .mk { height: 30px; }
+  html.mob .logo .wt { gap: 4px; }
   html.mob .logo .wm { font-size: 24px; }
   html.mob .logo .tg { font-size: 7px; }
   html.mob .menu-btn { margin-left: auto; padding: 10px; font-size: 15px; }
