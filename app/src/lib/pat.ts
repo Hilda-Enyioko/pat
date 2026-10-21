@@ -126,6 +126,9 @@ export function mapProgramError(err: unknown, logs?: string[]): string {
   if (lower.includes("user rejected") || lower.includes("rejected the request")) {
     return "You rejected the wallet request.";
   }
+  if (lower.includes("missing signature for public key")) {
+    return "Your wallet returned the transaction without the merchant's signature. Check that the active account in your wallet app is the merchant wallet, reconnect, and try again.";
+  }
 
   return message || "Settlement failed.";
 }

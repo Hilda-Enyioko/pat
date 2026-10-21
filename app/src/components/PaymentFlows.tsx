@@ -294,14 +294,16 @@ export function SignPayment({
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey, sendTransaction } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
   const [signature, setSignature] = useState<Uint8Array | null>(null);
   const [settling, setSettling] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   function consume(value: string) {
+    setFailed(false);
     try {
       const data = JSON.parse(value) as { intent: Record<string, unknown>; signature: string };
       const next = intentFromJson(data.intent);
@@ -334,12 +336,8 @@ export function MerchantSettlement() {
       setStatus("Connect the merchant wallet to settle.");
       return;
     }
-    if (!signTransaction) {
-      setStatus("Connected wallet does not support signing transactions.");
-      return;
-    }
-
     setSettling(true);
+    setFailed(false);
     setStatus("Checking balance and preparing preflight logs…");
 
     try {
@@ -418,15 +416,15 @@ export function MerchantSettlement() {
       }
 
       // -------------------------------------------------------------------------
-      // 5. Direct Signing & Broadcast via connection.sendRawTransaction
+      // 5. Sign & broadcast through the wallet
       // -------------------------------------------------------------------------
+      // sendTransaction lets the wallet sign and send in one step. Mobile wallets
+      // (Mobile Wallet Adapter on Android, wallet in-app browsers) handle that far
+      // more reliably than returning a signed transaction for the page to send,
+      // which could come back without the merchant's signature.
       setStatus("Approve transaction in your wallet…");
-      const signedTx = await signTransaction(transaction);
-
-      setStatus("Broadcasting to devnet…");
-      const rawTx = signedTx.serialize();
-      const tx = await connection.sendRawTransaction(rawTx, {
-        skipPreflight: true,
+      const tx = await sendTransaction(transaction, connection, {
+        skipPreflight: true, // already simulated above
         preflightCommitment: "confirmed",
       });
 
@@ -498,6 +496,7 @@ export function MerchantSettlement() {
       }
       console.groupEnd();
 
+      setFailed(true);
       setStatus(
         typeof mapProgramError === "function"
           ? mapProgramError(e)
@@ -511,6 +510,7 @@ export function MerchantSettlement() {
   }
 
   const isError =
+    failed ||
     status.startsWith("Invalid") ||
     status.startsWith("Camera unavailable") ||
     status.startsWith("Connect") ||
