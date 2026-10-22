@@ -9,11 +9,13 @@ import {
   buildReserveIx,
   chainNow,
   fetchReservation,
+  mapProgramError,
   PAYMENT_SPACE,
   RESERVATION_SPACE,
 } from "../lib/pat";
 import { initLedgerIfAbsent } from "../lib/ledger";
 import { OfflineModeError } from "../lib/network";
+import { InputError, notify, reportError } from "../lib/notify";
 import { lamportsToSol, solToLamports } from "../lib/format";
 import { Field, inputClass } from "./site/Field";
 import { PillButton } from "./site/Pill";
@@ -65,7 +67,7 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     const hoursNumber = Number(hours);
     if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) {
       setHoursError("Enter a finite number of hours greater than zero.");
-      setStatus("Please fix the highlighted field.");
+      notify.error("Check the spending window", "Enter a number of hours greater than zero.");
       return;
     }
 
@@ -74,18 +76,24 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     setStatus("Preparing…");
 
     try {
-      const capacity = solToLamports(capacitySol);
-      const perPaymentCap = solToLamports(capSol);
+      let capacity: bigint;
+      let perPaymentCap: bigint;
+      try {
+        capacity = solToLamports(capacitySol);
+        perPaymentCap = solToLamports(capSol);
+      } catch {
+        throw new InputError("Amounts must be plain SOL numbers, like 1 or 0.25.");
+      }
       const max = Number(maxPayments);
 
       if (capacity <= 0n || perPaymentCap <= 0n) {
-        throw new Error("Amounts must be greater than zero");
+        throw new InputError("Amounts must be greater than zero.");
       }
       if (perPaymentCap > capacity) {
-        throw new Error("Per-payment cap cannot exceed capacity");
+        throw new InputError("The per-payment cap can't be more than the capacity.");
       }
       if (!Number.isInteger(max) || max <= 0) {
-        throw new Error("Max payments must be a positive whole number");
+        throw new InputError("Max payments must be a positive whole number.");
       }
 
       const now = await chainNow(connection);
@@ -107,7 +115,9 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
       const sim = await connection.simulateTransaction(tx);
       if (sim.value.err) {
         console.error("Simulation failed. Detailed logs:\n", sim.value.logs);
-        throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`);
+        const simError = new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}`) as Error & { logs?: string[] };
+        simError.logs = sim.value.logs ?? undefined;
+        throw simError;
       }
 
       setStatus("Approve in your wallet…");
@@ -124,14 +134,19 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
 
       if (navigator.storage?.persist) await navigator.storage.persist().catch(() => undefined);
 
-      setStatus(`Reserved ✔  ${sig.slice(0, 12)}…`);
+      setStatus(null);
+      notify.success(`Reserved ${capacitySol} SOL`, `You can now spend it offline. Tx ${sig.slice(0, 8)}…`);
       onCreated();
     } catch (e: any) {
       if (e.logs) {
         console.error("RPC Error Logs:", e.logs);
       }
       console.error(e);
-      setStatus(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+      setStatus(null);
+      reportError(e, {
+        title: e instanceof InputError ? "Check your reservation" : "Reservation failed",
+        message: e instanceof InputError ? undefined : mapProgramError(e),
+      });
     } finally {
       setBusy(false);
     }
@@ -143,14 +158,13 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     try {
       const signature = await connection.requestAirdrop(publicKey, 1_000_000_000);
       await connection.confirmTransaction(signature, "confirmed");
-      setStatus("Airdrop confirmed. Your devnet wallet is funded.");
+      setStatus(null);
+      notify.success("Airdrop confirmed", "1 devnet SOL is in your wallet.");
     } catch (error) {
       console.error(error);
-      setStatus(
-        error instanceof OfflineModeError
-          ? error.message
-          : "Devnet faucet is rate-limited right now. Try again later or use faucet.solana.com."
-      );
+      setStatus(null);
+      if (error instanceof OfflineModeError) reportError(error, { title: "Airdrop failed" });
+      else notify.warning("Airdrop didn't go through", "The devnet faucet is rate-limited right now. Try again later or use faucet.solana.com.");
     }
   }
 
@@ -162,8 +176,6 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
     setHoursError(null);
   };
 
-  const isErrorStatus = status?.startsWith("Failed") || status?.startsWith("Please fix");
-  const isSuccessStatus = status?.startsWith("Reserved") || status?.startsWith("Airdrop confirmed");
 
   return (
     <div className="flex flex-col gap-10">
@@ -285,7 +297,7 @@ export function ReserveForm({ onCreated }: { onCreated: () => void }) {
               <PillButton type="button" size="sm" tone="light" text="Airdrop 1 SOL" onClick={() => void requestAirdrop()} disabled={!publicKey || busy} />
             </div>
             {!publicKey && <StatusNote tone="warning">Connect a wallet first.</StatusNote>}
-            {status && <StatusNote tone={isErrorStatus ? "error" : isSuccessStatus ? "success" : "neutral"}>{status}</StatusNote>}
+            {status && <StatusNote>{status}</StatusNote>}
           </div>
         </form>
       </section>

@@ -635,3 +635,13 @@ html.intro .hero .ln > span { transform: translateY(110%); }
 
 html.locked,
 html.locked body { overflow: hidden; overscroll-behavior: none; }
+
+/* Toast countdown: the bar drains over the toast's lifetime; pausing it pauses the timer. */
+@keyframes toastTimer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.toast-timer { animation: toastTimer linear forwards; }
+.toast:hover .toast-timer,
+.toast:focus-within .toast-timer { animation-play-state: paused; }
+.alert-dialog[open] { animation: navIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
@@ -15,6 +15,7 @@ import {
   debitForPayment,
   nowAdjusted,
   rollbackPending,
+  LedgerError,
   type OfflineLedger,
 } from "../lib/ledger";
 import {
@@ -30,6 +31,14 @@ import { Field, inputClass } from "./site/Field";
 import { PageHeading } from "./site/PageHeading";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
+import { InputError, notify, reportError } from "../lib/notify";
+
+const LEDGER_MESSAGES: Partial<Record<string, string>> = {
+  RESERVATION_EXPIRED: "This reservation is no longer active.",
+  ZERO_AMOUNT: "Amount must be greater than zero.",
+  OVER_PER_PAYMENT_CAP: "Amount exceeds the per-payment cap.",
+  INSUFFICIENT_OFFLINE_BALANCE: "Amount exceeds your available offline balance.",
+};
 
 export function SignPayment({
   ledgers,
@@ -45,7 +54,6 @@ export function SignPayment({
   const [selected, setSelected] = useState(ledgers[0]?.reservation ?? "");
   const [payload, setPayload] = useState<string | null>(null);
   const [intent, setIntent] = useState<SignedIntentPayload | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
@@ -57,22 +65,32 @@ export function SignPayment({
   async function signPayment() {
     let paymentId = "";
     try {
-      if (!publicKey) throw new Error("Connect your wallet first.");
-      if (!signMessage) throw new Error("This wallet does not support signMessage.");
+      if (!publicKey) throw new InputError("Connect your wallet first.");
+      if (!signMessage) throw new Error("This wallet can't sign messages, which PAT needs to authorise offline payments. Try Phantom or Solflare.");
 
       const ledger = ledgers.find((l) => l.reservation === selected);
-      if (!ledger) throw new Error("Choose an active reservation.");
+      if (!ledger) throw new InputError("Choose an active reservation.");
 
-      const merchantKey = new PublicKey(merchant.trim());
-      if (merchantKey.equals(publicKey)) throw new Error("Merchant must be different from the payer.");
+      let merchantKey: PublicKey;
+      try {
+        merchantKey = new PublicKey(merchant.trim());
+      } catch {
+        throw new InputError("The merchant wallet address isn't valid. Check it and try again.");
+      }
+      if (merchantKey.equals(publicKey)) throw new InputError("Merchant must be different from the payer.");
 
-      const lamports = solToLamports(amount);
-      if (lamports <= 0n) throw new Error("Amount must be greater than zero.");
-      if (lamports > BigInt(ledger.perPaymentCap)) throw new Error("Amount exceeds the per-payment cap.");
-      if (lamports > availableOffline(ledger)) throw new Error("Amount exceeds available offline balance.");
+      let lamports: bigint;
+      try {
+        lamports = solToLamports(amount);
+      } catch {
+        throw new InputError("Enter the amount as a plain SOL number, like 0.25.");
+      }
+      if (lamports <= 0n) throw new InputError("Amount must be greater than zero.");
+      if (lamports > BigInt(ledger.perPaymentCap)) throw new InputError("Amount exceeds the per-payment cap.");
+      if (lamports > availableOffline(ledger)) throw new InputError("Amount exceeds your available offline balance.");
 
       const now = nowAdjusted(ledger);
-      if (now >= ledger.expiresAt) throw new Error("Reservation is no longer Active.");
+      if (now >= ledger.expiresAt) throw new InputError("This reservation is no longer active.");
 
       paymentId = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
         b.toString(16).padStart(2, "0")
@@ -113,7 +131,7 @@ export function SignPayment({
         )
       ) {
         await rollbackPending(paymentId);
-        throw new Error("Wallet returned an invalid signature; the message may have been altered.");
+        throw new Error("Your wallet returned an invalid signature; the message may have been altered. Nothing was signed.");
       }
 
       const encoded = encodeSignedPayload(next, signature);
@@ -131,18 +149,24 @@ export function SignPayment({
 
       setIntent(next);
       setPayload(encoded);
-      setStatus("Signed offline payment. Present the QR code to the merchant.");
+      notify.success("Payment signed", "Show the QR code to the merchant.");
     } catch (error) {
       if (paymentId) await rollbackPending(paymentId);
-      setStatus(error instanceof Error ? error.message : String(error));
+      const ledgerMessage = error instanceof LedgerError ? LEDGER_MESSAGES[error.code] : undefined;
+      reportError(ledgerMessage ? new InputError(ledgerMessage) : error, { title: "Couldn't sign this payment" });
     }
   }
 
   const handleCopy = async () => {
     if (!payload) return;
-    await navigator.clipboard.writeText(payload);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopySuccess(true);
+      notify.success("Payload copied", undefined, { key: "copy" });
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      notify.warning("Couldn't copy", "Your browser blocked the clipboard. Use Download .pat instead.");
+    }
   };
 
   const handleDownload = () => {
@@ -156,13 +180,6 @@ export function SignPayment({
     a.click();
   };
 
-  const isErrorStatus =
-    status?.startsWith("Connect") ||
-    status?.startsWith("Choose") ||
-    status?.startsWith("Amount") ||
-    status?.startsWith("Reservation") ||
-    status?.startsWith("Wallet returned");
-  const isSuccessStatus = status?.startsWith("Signed offline payment");
 
   const hexShort = intent
     ? Array.from(intent.paymentId)
@@ -249,9 +266,6 @@ export function SignPayment({
 
             <PillButton type="submit" size="lg" text="Sign payment" className="w-full" />
 
-            {status && (
-              <StatusNote tone={isErrorStatus ? "error" : isSuccessStatus ? "success" : "neutral"}>{status}</StatusNote>
-            )}
           </form>
         </section>
 
@@ -300,17 +314,28 @@ export function MerchantSettlement() {
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
   const [signature, setSignature] = useState<Uint8Array | null>(null);
   const [settling, setSettling] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // The scanner reports the same code many times a second; handle each code once.
+  const lastScan = useRef<string | null>(null);
 
   function consume(value: string) {
-    setFailed(false);
     try {
-      const data = JSON.parse(value) as { intent: Record<string, unknown>; signature: string };
-      const next = intentFromJson(data.intent);
-      const sig = bs58.decode(data.signature);
-      if (sig.length !== 64) throw new Error("Invalid signature length.");
-      if (publicKey && !next.merchant.equals(publicKey)) throw new Error("Merchant mismatch.");
-      if (Number(next.expiresAt) < Math.floor(Date.now() / 1000)) throw new Error("Payment expired.");
+      let data: { intent: Record<string, unknown>; signature: string };
+      let next: SignedIntentPayload;
+      let sig: Uint8Array;
+      try {
+        data = JSON.parse(value);
+        next = intentFromJson(data.intent);
+        sig = bs58.decode(data.signature);
+      } catch {
+        throw new InputError("That isn't a PAT payment. Scan the payer's QR code or paste the full payload.");
+      }
+      if (sig.length !== 64) throw new InputError("The payment's signature is the wrong length.");
+      if (publicKey && !next.merchant.equals(publicKey)) {
+        throw new InputError("This payment is addressed to a different merchant wallet.");
+      }
+      if (Number(next.expiresAt) < Math.floor(Date.now() / 1000)) {
+        throw new InputError("This payment has expired. Ask the payer to sign a new one.");
+      }
       if (
         !nacl.sign.detached.verify(
           serializeIntentSigningBytes(next),
@@ -318,26 +343,28 @@ export function MerchantSettlement() {
           next.payer.toBytes()
         )
       ) {
-        throw new Error("Signature verification failed.");
+        throw new Error("The payer's signature doesn't match this payment. It may have been altered. Don't accept it.");
       }
       setParsed(next);
       setSignature(sig);
       setStatus("Signature valid. Settle online to confirm funds.");
+      notify.success("Payment verified", `${lamportsToSol(next.amount)} SOL, signed by the payer.`, { key: "scan" });
     } catch (e) {
       setParsed(null);
       setSignature(null);
-      setStatus(`Invalid payment: ${e instanceof Error ? e.message : String(e)}`);
+      setStatus("Scan or paste a signed payment.");
+      if (e instanceof InputError) notify.error("Invalid payment", e.message, { key: "scan" });
+      else reportError(e, { title: "Don't accept this payment" });
     }
   }
 
   async function settle() {
     if (!parsed || !signature) return;
     if (!publicKey) {
-      setStatus("Connect the merchant wallet to settle.");
+      notify.warning("Connect the merchant wallet", "Settling needs the wallet this payment is addressed to.");
       return;
     }
     setSettling(true);
-    setFailed(false);
     setStatus("Checking balance and preparing preflight logs…");
 
     try {
@@ -484,6 +511,7 @@ export function MerchantSettlement() {
       }
 
       setStatus(`Payment settled ✔  Tx: ${tx.slice(0, 8)}…`);
+      notify.success("Payment settled", `${lamportsToSol(parsed.amount)} SOL confirmed on-chain. Tx ${tx.slice(0, 8)}…`);
     } catch (e: any) {
       console.group("🛑 [PAT Settlement] Detailed Error Diagnostics");
       console.error("Error Object:", e);
@@ -496,25 +524,17 @@ export function MerchantSettlement() {
       }
       console.groupEnd();
 
-      setFailed(true);
-      setStatus(
-        typeof mapProgramError === "function"
-          ? mapProgramError(e)
-          : e instanceof Error
-          ? e.message
-          : String(e)
-      );
+      setStatus("Signature valid. Settle online to confirm funds.");
+      reportError(e, {
+        title: "Settlement failed",
+        message: mapProgramError(e),
+        actions: [{ label: "Try again", onClick: () => void settle() }],
+      });
     } finally {
       setSettling(false);
     }
   }
 
-  const isError =
-    failed ||
-    status.startsWith("Invalid") ||
-    status.startsWith("Camera unavailable") ||
-    status.startsWith("Connect") ||
-    status.startsWith("Connected wallet");
   const isValid = status.startsWith("Signature valid") || status.startsWith("Payment settled");
 
   const settled = status.startsWith("Payment settled");
@@ -536,9 +556,14 @@ export function MerchantSettlement() {
             <div className="aspect-[4/3] overflow-hidden rounded-[14px] bg-black">
               <Scanner
                 onScan={(r) => {
-                  if (r[0]?.rawValue) consume(r[0].rawValue);
+                  const value = r[0]?.rawValue;
+                  if (!value || value === lastScan.current) return;
+                  lastScan.current = value;
+                  consume(value);
                 }}
-                onError={() => setStatus("Camera unavailable. Paste the signed payload instead.")}
+                onError={() =>
+                  notify.warning("Camera unavailable", "Allow camera access, or paste the signed payload instead.", { key: "camera" })
+                }
               />
             </div>
           </div>
@@ -580,7 +605,7 @@ export function MerchantSettlement() {
           </PricingCard.Header>
 
           <PricingCard.Body className="space-y-5">
-            <StatusNote tone={isError ? "error" : isValid ? "success" : "neutral"}>{status}</StatusNote>
+            <StatusNote tone={isValid ? "success" : "neutral"}>{status}</StatusNote>
 
             {parsed ? (
               <>

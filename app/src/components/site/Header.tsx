@@ -6,6 +6,7 @@ import { APP_VIEWS, FAUCET_URL, SOURCE_URL, type View } from "@/lib/views";
 import { Logo } from "./Logo";
 import { NetworkToggle } from "./NetworkToggle";
 import { PillButton } from "./Pill";
+import { notify } from "@/lib/notify";
 
 const explorerUrl = `https://explorer.solana.com/address/${PROGRAM_ID.toBase58()}?cluster=${CLUSTER}`;
 
@@ -82,9 +83,10 @@ export function Header({
     try {
       await navigator.clipboard.writeText(publicKey);
       setCopied(true);
+      notify.success("Address copied", undefined, { key: "copy" });
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* clipboard blocked: the address is still shown in full */
+      notify.warning("Couldn't copy", "Your browser blocked the clipboard. The full address is shown in the wallet menu.");
     }
   };
   const netLabel = online ? "Online" : reachable ? "Offline" : "No network";

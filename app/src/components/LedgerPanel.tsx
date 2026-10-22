@@ -22,6 +22,7 @@ import { withdrawReservation } from "../lib/withdraw";
 import { lamportsToSol, shortKey } from "../lib/format";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
+import { notify, reportError } from "../lib/notify";
 
 type WithdrawStage = "idle" | "checking" | "confirm" | "working";
 
@@ -65,7 +66,6 @@ export function LedgerPanel({
 }) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
-  const [msg, setMsg] = useState<string | null>(null);
   const [stage, setStage] = useState<WithdrawStage>("idle");
   const [refund, setRefund] = useState<bigint>(0n);
   const [unsettled, setUnsettled] = useState(0);
@@ -75,6 +75,8 @@ export function LedgerPanel({
   ledgerRef.current = ledger;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Background syncs repeat every 15s; report a failing one once, not every time.
+  const silentFailureShown = useRef(false);
 
   const now = nowAdjusted(ledger);
   const phaseLabel = ledger.withdrawn ? "Withdrawn" : phaseOf(ledger, now);
@@ -88,10 +90,17 @@ export function LedgerPanel({
     async (silent = false) => {
       try {
         await reconcileWithChain(connection, ledgerRef.current);
-        if (!silent) setMsg("Synced from chain.");
+        silentFailureShown.current = false;
+        if (!silent) notify.success("Synced from chain", undefined, { key: `sync-${ledgerRef.current.reservation}` });
         onChangeRef.current();
       } catch (e) {
-        setMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+        if (silent && silentFailureShown.current) return;
+        if (silent) silentFailureShown.current = true;
+        notify.warning(
+          "Couldn't sync this reservation",
+          `${e instanceof Error ? e.message : String(e)}. Your local ledger is still safe to use.`,
+          { key: `sync-${ledgerRef.current.reservation}` }
+        );
       }
     },
     [connection]
@@ -114,18 +123,19 @@ export function LedgerPanel({
   }, [ledger.withdrawn, releasable]);
 
   async function prepareWithdraw() {
-    setMsg(null);
     setStage("checking");
     try {
       const chainTime = await chainNow(connection);
       if (chainTime <= ledger.settleDeadline) {
-        throw new Error(`The settle window is still open. Opens in ${formatDuration(ledger.settleDeadline + 1 - chainTime)}.`);
+        setStage("idle");
+        notify.warning("Not yet", `The settle window is still open. Withdraw opens in ${formatDuration(ledger.settleDeadline + 1 - chainTime)}.`);
+        return;
       }
       const fresh = await reconcileWithChain(connection, ledger);
       if (fresh.withdrawn) {
         onChangeRef.current();
         setStage("idle");
-        setMsg("Already withdrawn.");
+        notify.info("Already withdrawn", "This reservation was closed and refunded earlier.");
         return;
       }
       const lamports = await connection.getBalance(new PublicKey(ledger.reservation), "confirmed");
@@ -134,13 +144,13 @@ export function LedgerPanel({
       setStage("confirm");
     } catch (e) {
       setStage("idle");
-      setMsg(`Withdraw failed: ${e instanceof Error ? e.message : String(e)}`);
+      reportError(e, { title: "Couldn't start the withdraw" });
     }
   }
 
   async function confirmWithdraw() {
     if (!publicKey || !sendTransaction) {
-      setMsg("Withdraw failed: connect the wallet that created this reservation.");
+      notify.warning("Connect the owner wallet", "Only the wallet that created this reservation can withdraw it.");
       return;
     }
     setStage("working");
@@ -152,17 +162,19 @@ export function LedgerPanel({
         sendTransaction
       );
       await reconcileWithChain(connection, ledgerRef.current).catch(() => undefined);
-      setMsg(`Withdrawn ✔  ${signature.slice(0, 12)}…`);
+      notify.success("Withdrawn", `${lamportsToSol(refund)} SOL returned to your wallet. Tx ${signature.slice(0, 8)}…`);
       setStage("idle");
       onWithdrawn();
     } catch (e) {
       setStage("confirm");
-      setMsg(`Withdraw failed: ${e instanceof Error ? e.message : String(e)}`);
+      reportError(e, {
+        title: "Withdraw failed",
+        actions: [{ label: "Try again", onClick: () => void confirmWithdraw() }],
+      });
     }
   }
 
   const historyList = [...(ledger.history ?? [])].sort((a, b) => b.createdAt - a.createdAt);
-  const isErrorMsg = msg?.startsWith("Sync failed") || msg?.startsWith("Withdraw failed");
 
   const balance = ledger.withdrawn ? 0n : locked ? unspentOnChain : availableOffline(ledger);
   const balanceLabel = locked ? "SOL unspent on-chain (signing disabled here)" : "SOL available offline";
@@ -262,7 +274,6 @@ export function LedgerPanel({
           )}
           {!online && <span className="text-sm text-muted-foreground">Offline: showing the local ledger</span>}
         </div>
-        {msg && <StatusNote tone={isErrorMsg ? "error" : "success"}>{msg}</StatusNote>}
 
         <PricingCard.Separator>Transaction history</PricingCard.Separator>
 

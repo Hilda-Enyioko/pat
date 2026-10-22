@@ -16,8 +16,9 @@ import { isLocked, isSignable, listLedgers, type OfflineLedger } from "./lib/led
 import { useWalletHistory } from "./hooks/useWalletHistory";
 import { validViews, type View } from "./lib/views";
 import { useNetwork } from "./hooks/useNetwork";
+import { Notifier } from "./components/site/Notifier";
+import { notify } from "./lib/notify";
 import { useConnectWallet } from "./hooks/useConnectWallet";
-import { friendlyError } from "./lib/errors";
 import { readOfflinePref, setAppOffline, writeOfflinePref } from "./lib/network";
 import { CLUSTER, RPC_URL } from "./config";
 
@@ -27,54 +28,21 @@ const viewVariants: Variants = {
   exit: { opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeIn" } },
 };
 
-/** Latest wallet failure as a readable message, cleared after a few seconds. */
-function useWalletErrorToast() {
-  const [message, setMessage] = useState<string | null>(null);
+function useOfflineReadyToast() {
   useEffect(() => {
-    let timer: number | undefined;
-    const onError = (event: Event) => {
-      const error = (event as CustomEvent<Error>).detail;
-      const text = friendlyError(error);
-      const generic = !error?.message || text === "Something went wrong. Please try again.";
-      const name = (error?.name ?? "WalletError").replace(/Error$/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
-      setMessage(generic ? `${name}. Open your wallet app and try again.` : text);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setMessage(null), 7000);
-    };
-    window.addEventListener("pat:wallet-error", onError);
-    return () => {
-      window.removeEventListener("pat:wallet-error", onError);
-      window.clearTimeout(timer);
-    };
-  }, []);
-  return message;
-}
-
-function useOfflineReady() {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    let timer: number | undefined;
-    const onReady = () => {
-      setReady(true);
-      timer = window.setTimeout(() => setReady(false), 6000);
-    };
+    const onReady = () => notify.success("Ready for offline payments", "PAT is cached on this device and works with no signal.");
     window.addEventListener("pat:offline-ready", onReady);
-    return () => {
-      window.removeEventListener("pat:offline-ready", onReady);
-      window.clearTimeout(timer);
-    };
+    return () => window.removeEventListener("pat:offline-ready", onReady);
   }, []);
-  return ready;
 }
 
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
   const { connectWallet, chooseWallet } = useConnectWallet();
-  const walletError = useWalletErrorToast();
   const reachable = useNetwork();
   const [offlinePref, setOfflinePref] = useState(readOfflinePref);
   const [howOpen, setHowOpen] = useState(false);
-  const offlineReady = useOfflineReady();
+  useOfflineReadyToast();
 
   // Online only when the network is really there AND the user hasn't chosen offline mode.
   // Losing the connection flips this automatically; it flips back when the
@@ -184,24 +152,6 @@ function AppContent() {
   const overlays = (
     <>
       <HowItWorks open={howOpen} onClose={() => setHowOpen(false)} onStart={start} />
-      {walletError && (
-        <div
-          role="alert"
-          className="fixed inset-x-4 bottom-4 z-[1100] mx-auto flex max-w-md items-start gap-2.5 rounded-[18px] bg-ink px-4 py-3 text-sm font-medium text-white shadow-[0_16px_36px_-16px_rgba(15,15,14,.6)]"
-        >
-          <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-red" />
-          <span>Wallet: {walletError}</span>
-        </div>
-      )}
-      {offlineReady && (
-        <div
-          role="status"
-          className="fixed bottom-4 left-4 z-50 inline-flex items-center gap-2.5 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-[0_16px_36px_-16px_rgba(15,15,14,.6)]"
-        >
-          <span aria-hidden="true" className="size-2 rounded-full bg-blue" />
-          Offline payments ready on this device
-        </div>
-      )}
     </>
   );
 
@@ -338,6 +288,7 @@ export default function App() {
   return (
     <Providers>
       <AppContent />
+      <Notifier />
     </Providers>
   );
 }
