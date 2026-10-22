@@ -38,7 +38,7 @@ function useOfflineReadyToast() {
 
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
-  const { connectWallet, chooseWallet } = useConnectWallet();
+  const { connectWallet, chooseWallet, usesMobileWallet } = useConnectWallet();
   const reachable = useNetwork();
   const [offlinePref, setOfflinePref] = useState(readOfflinePref);
   const [howOpen, setHowOpen] = useState(false);
@@ -166,7 +166,7 @@ function AppContent() {
 
   let content: ReactNode;
   if (guardedView === "connect") {
-    content = <Connect onConnect={connectWallet} onChooseWallet={chooseWallet} />;
+    content = <Connect onConnect={connectWallet} onChooseWallet={chooseWallet} usesMobileWallet={usesMobileWallet} />;
   } else if (guardedView === "ledger") {
     content = (
       <main className="page">
