@@ -256,7 +256,7 @@ html.tab-l {
   }
   .pclose svg { width: 20px; height: 20px; }
   html.mob .pmeta { grid-template-columns: 1fr; }
-  html.mob .pwallet { margin-top: auto; }
+  html.mob .pwallet { margin-bottom: 6px; }
   html.mob.menu-open,
   html.mob.menu-open body { overflow: hidden; }
   .scrim,
@@ -311,6 +311,20 @@ html.tab-l {
   }
   .pmeta a:hover,
   .pmeta button:hover { color: var(--nav-muted); }
+  /* Wallet menu under the connected address pill (tablet and desktop). */
+  .wpanel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 30;
+    display: none;
+    width: min(340px, 100%);
+    padding: 14px;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 0 0 1px var(--nav-line), 0 30px 60px -30px rgba(15, 15, 14, 0.45);
+  }
+  .hdr[data-wallet-open] .wpanel { display: block; animation: navIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
   .pwallet {
     display: flex;
     flex-wrap: wrap;

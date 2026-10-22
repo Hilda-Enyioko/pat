@@ -1,7 +1,6 @@
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { Providers } from "./components/Providers";
 import { ReserveForm } from "./components/ReserveForm";
 import { LedgerPanel } from "./components/LedgerPanel";
@@ -17,6 +16,8 @@ import { isLocked, isSignable, listLedgers, type OfflineLedger } from "./lib/led
 import { useWalletHistory } from "./hooks/useWalletHistory";
 import { validViews, type View } from "./lib/views";
 import { useNetwork } from "./hooks/useNetwork";
+import { useConnectWallet } from "./hooks/useConnectWallet";
+import { friendlyError } from "./lib/errors";
 import { readOfflinePref, setAppOffline, writeOfflinePref } from "./lib/network";
 import { CLUSTER, RPC_URL } from "./config";
 
@@ -25,6 +26,29 @@ const viewVariants: Variants = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
   exit: { opacity: 0, y: -8, transition: { duration: 0.15, ease: "easeIn" } },
 };
+
+/** Latest wallet failure as a readable message, cleared after a few seconds. */
+function useWalletErrorToast() {
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    let timer: number | undefined;
+    const onError = (event: Event) => {
+      const error = (event as CustomEvent<Error>).detail;
+      const text = friendlyError(error);
+      const generic = !error?.message || text === "Something went wrong. Please try again.";
+      const name = (error?.name ?? "WalletError").replace(/Error$/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
+      setMessage(generic ? `${name}. Open your wallet app and try again.` : text);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setMessage(null), 7000);
+    };
+    window.addEventListener("pat:wallet-error", onError);
+    return () => {
+      window.removeEventListener("pat:wallet-error", onError);
+      window.clearTimeout(timer);
+    };
+  }, []);
+  return message;
+}
 
 function useOfflineReady() {
   const [ready, setReady] = useState(false);
@@ -45,7 +69,8 @@ function useOfflineReady() {
 
 function AppContent() {
   const { publicKey, disconnect } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { connectWallet, chooseWallet } = useConnectWallet();
+  const walletError = useWalletErrorToast();
   const reachable = useNetwork();
   const [offlinePref, setOfflinePref] = useState(readOfflinePref);
   const [howOpen, setHowOpen] = useState(false);
@@ -137,7 +162,7 @@ function AppContent() {
     setView("landing");
   };
 
-  const openWalletModal = () => setWalletModalVisible(true);
+
   const syncing = loading || !ready;
   const hasHistory = (history?.timeline.length ?? 0) > 0;
   const start = () => (publicKey ? setView("ledger") : setView("connect"));
@@ -150,7 +175,7 @@ function AppContent() {
       online={online}
       reachable={reachable}
       onToggleOnline={toggleOnline}
-      onConnect={openWalletModal}
+      onConnect={connectWallet}
       onDisconnect={disconnectWallet}
       onHowItWorks={() => setHowOpen(true)}
     />
@@ -159,6 +184,15 @@ function AppContent() {
   const overlays = (
     <>
       <HowItWorks open={howOpen} onClose={() => setHowOpen(false)} onStart={start} />
+      {walletError && (
+        <div
+          role="alert"
+          className="fixed inset-x-4 bottom-4 z-[1100] mx-auto flex max-w-md items-start gap-2.5 rounded-[18px] bg-ink px-4 py-3 text-sm font-medium text-white shadow-[0_16px_36px_-16px_rgba(15,15,14,.6)]"
+        >
+          <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-red" />
+          <span>Wallet: {walletError}</span>
+        </div>
+      )}
       {offlineReady && (
         <div
           role="status"
@@ -182,7 +216,7 @@ function AppContent() {
 
   let content: ReactNode;
   if (guardedView === "connect") {
-    content = <Connect onConnect={openWalletModal} />;
+    content = <Connect onConnect={connectWallet} onChooseWallet={chooseWallet} />;
   } else if (guardedView === "ledger") {
     content = (
       <main className="page">

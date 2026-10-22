@@ -5,8 +5,8 @@ import { Mosaic } from "./site/Mosaic";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
 
-export function Connect({ onConnect }: { onConnect: () => void }) {
-  const { wallets, connecting } = useWallet();
+export function Connect({ onConnect, onChooseWallet }: { onConnect: () => void; onChooseWallet: () => void }) {
+  const { wallets, wallet, connecting } = useWallet();
   const installed = wallets.some((wallet) => wallet.readyState === "Installed") || Boolean(window.solflare?.isSolflare);
 
   return (
@@ -37,7 +37,21 @@ export function Connect({ onConnect }: { onConnect: () => void }) {
             <PricingCard.Description className="mb-5 text-sm">
               Solflare, Phantom, Backpack or any Wallet Standard wallet installed in this browser.
             </PricingCard.Description>
-            <PillButton text={connecting ? "Connecting…" : "Choose wallet"} disabled={connecting} onClick={onConnect} className="w-full" />
+            <PillButton
+              text={connecting ? "Connecting…" : wallet ? `Connect ${wallet.adapter.name}` : "Choose wallet"}
+              disabled={connecting}
+              onClick={onConnect}
+              className="w-full"
+            />
+            {wallet && (
+              <button
+                type="button"
+                onClick={onChooseWallet}
+                className="mt-3 w-full cursor-pointer border-0 bg-transparent p-1 text-sm font-semibold text-ink underline underline-offset-4"
+              >
+                Use a different wallet
+              </button>
+            )}
           </PricingCard.Header>
           <PricingCard.Body className="space-y-3">
             {!installed && (
