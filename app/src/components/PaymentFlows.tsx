@@ -308,7 +308,7 @@ export function SignPayment({
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, disconnect } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
@@ -364,13 +364,28 @@ export function MerchantSettlement() {
       notify.warning("Connect the merchant wallet", "Settling needs the wallet this payment is addressed to.");
       return;
     }
+
+    // The merchant check in consume() only runs if a wallet was connected at scan
+    // time and never re-runs after an account switch, so verify again here.
+    if (!parsed.merchant.equals(publicKey)) {
+      notify.error(
+        "Wrong wallet connected",
+        `This payment is for ${shortKey(parsed.merchant.toBase58())}, but ${shortKey(publicKey.toBase58())} is connected. Switch accounts in your wallet app and reconnect.`,
+        { key: "scan" },
+      );
+      return;
+    }
+
+    // Uncomment to compare with the account active in the wallet app on the phone.
+    // notify.info("Signer", `Adapter: ${publicKey.toBase58()}`, { key: "dbg" });
+
     setSettling(true);
     setStatus("Checking balance and preparing preflight logs…");
 
     try {
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 1. Balance & Preflight Readiness
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       const balance = await connection.getBalance(publicKey, "confirmed");
       console.group("[PAT Settlement] Preflight Context");
       console.log("Settler (Merchant):", publicKey.toBase58());
@@ -388,9 +403,9 @@ export function MerchantSettlement() {
         );
       }
 
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 2. Build Instructions & Log Structure
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       setStatus("Building settlement instructions…");
       const instructions = await buildSettleIx({
         settler: publicKey,
@@ -411,18 +426,18 @@ export function MerchantSettlement() {
       });
       console.groupEnd();
 
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 3. Assemble Transaction
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       const latest = await connection.getLatestBlockhash("confirmed");
       const transaction = new Transaction({
         feePayer: publicKey,
         recentBlockhash: latest.blockhash,
       }).add(...instructions);
 
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 4. Preflight Simulation & Diagnostic Logging
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       setStatus("Simulating transaction on-chain…");
       const sim = await connection.simulateTransaction(transaction, undefined, true);
 
@@ -442,9 +457,9 @@ export function MerchantSettlement() {
         throw simError;
       }
 
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 5. Sign & broadcast through the wallet
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // sendTransaction lets the wallet sign and send in one step. Mobile wallets
       // (Mobile Wallet Adapter on Android, wallet in-app browsers) handle that far
       // more reliably than returning a signed transaction for the page to send,
@@ -463,14 +478,14 @@ export function MerchantSettlement() {
         "confirmed"
       );
 
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       // 6. Record Settled Entry
-      // -------------------------------------------------------------------------
+      // -----------------------------------------------------------------------
       const hexPaymentId = Array.from(parsed.paymentId)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
 
-      // A. Record in Merchant Received History (Always available to the merchant)
+      // A. Record in Merchant Received History (always available to the merchant)
       try {
         const receipt = {
           signature: tx,
@@ -490,7 +505,7 @@ export function MerchantSettlement() {
         console.warn("Failed saving to merchant receipts:", e);
       }
 
-      // B. If this device ALSO happens to hold the payer's ledger (e.g., self-testing on one device):
+      // B. If this device ALSO holds the payer's ledger (e.g. self-testing on one device):
       try {
         await addHistoryEntry(parsed.reservation.toBase58(), {
           paymentId: hexPaymentId,
@@ -504,7 +519,7 @@ export function MerchantSettlement() {
           payload: raw || undefined,
         });
       } catch (historyErr: any) {
-        // If NO_LEDGER, it's expected on an independent merchant machine
+        // NO_LEDGER is expected on an independent merchant machine
         if (historyErr?.message !== "NO_LEDGER" && historyErr?.code !== "NO_LEDGER") {
           console.warn("Could not update local reservation ledger:", historyErr);
         }
@@ -525,10 +540,17 @@ export function MerchantSettlement() {
       console.groupEnd();
 
       setStatus("Signature valid. Settle online to confirm funds.");
+
+      // A missing merchant signature usually means the wallet app signed with a
+      // different account than the one the adapter reports (stale MWA authorization).
+      // Disconnecting clears it, so the wallet app asks which account to use again.
+      const missingSig = /missing signature for public key/i.test(String(e?.message));
       reportError(e, {
         title: "Settlement failed",
         message: mapProgramError(e),
-        actions: [{ label: "Try again", onClick: () => void settle() }],
+        actions: missingSig
+          ? [{ label: "Disconnect wallet", onClick: () => void disconnect() }]
+          : [{ label: "Try again", onClick: () => void settle() }],
       });
     } finally {
       setSettling(false);
