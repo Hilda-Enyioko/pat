@@ -308,7 +308,7 @@ export function SignPayment({
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, disconnect } = useWallet();
+  const { publicKey, sendTransaction, signTransaction, disconnect } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
@@ -365,8 +365,8 @@ export function MerchantSettlement() {
       return;
     }
 
-    // The merchant check in consume() only runs if a wallet was connected at scan
-    // time and never re-runs after an account switch, so verify again here.
+    // consume() only checks the merchant if a wallet was connected at scan time
+    // and never re-runs after an account switch, so verify again here.
     if (!parsed.merchant.equals(publicKey)) {
       notify.error(
         "Wrong wallet connected",
@@ -375,9 +375,6 @@ export function MerchantSettlement() {
       );
       return;
     }
-
-    // Uncomment to compare with the account active in the wallet app on the phone.
-    // notify.info("Signer", `Adapter: ${publicKey.toBase58()}`, { key: "dbg" });
 
     setSettling(true);
     setStatus("Checking balance and preparing preflight logs…");
@@ -427,19 +424,22 @@ export function MerchantSettlement() {
       console.groupEnd();
 
       // -----------------------------------------------------------------------
-      // 3. Assemble Transaction
+      // 3. Assemble Transaction (a factory, so simulation never touches the
+      //    instance that goes to the wallet)
       // -----------------------------------------------------------------------
       const latest = await connection.getLatestBlockhash("confirmed");
-      const transaction = new Transaction({
-        feePayer: publicKey,
-        recentBlockhash: latest.blockhash,
-      }).add(...instructions);
+      const buildTx = () =>
+        new Transaction({
+          feePayer: publicKey,
+          blockhash: latest.blockhash,
+          lastValidBlockHeight: latest.lastValidBlockHeight,
+        }).add(...instructions);
 
       // -----------------------------------------------------------------------
-      // 4. Preflight Simulation & Diagnostic Logging
+      // 4. Preflight Simulation & Diagnostic Logging (on a throwaway instance)
       // -----------------------------------------------------------------------
       setStatus("Simulating transaction on-chain…");
-      const sim = await connection.simulateTransaction(transaction, undefined, true);
+      const sim = await connection.simulateTransaction(buildTx(), undefined, true);
 
       console.group("🔬 [PAT Settlement] Simulation Result");
       console.log("Units Consumed:", sim.value.unitsConsumed);
@@ -457,24 +457,44 @@ export function MerchantSettlement() {
         throw simError;
       }
 
+      // Fresh, untouched instance for the wallet.
+      const transaction = buildTx();
+
       // -----------------------------------------------------------------------
       // 5. Sign & broadcast through the wallet
       // -----------------------------------------------------------------------
-      // sendTransaction lets the wallet sign and send in one step. Mobile wallets
-      // (Mobile Wallet Adapter on Android, wallet in-app browsers) handle that far
-      // more reliably than returning a signed transaction for the page to send,
-      // which could come back without the merchant's signature.
+      // TEMPORARY DIAGNOSTIC: sign first and report what the wallet returns,
+      // so it's readable on the phone. Once the cause is known, delete this
+      // block and restore the sendTransaction call below.
       setStatus("Approve transaction in your wallet…");
-      const tx = await sendTransaction(transaction, connection, {
-        skipPreflight: true, // already simulated above
-        preflightCommitment: "confirmed",
+      if (!signTransaction) throw new Error("This wallet can't sign transactions.");
+      const signed = await signTransaction(transaction);
+
+      const report = signed.signatures
+        .map((s) => `${shortKey(s.publicKey.toBase58())}: ${s.signature ? "signed" : "MISSING"}`)
+        .join("\n");
+      const sameMessage = signed.serializeMessage().equals(transaction.serializeMessage());
+      notify.toast({
+        tone: "info",
+        title: "Wallet returned",
+        message: `${report}\nmessage unchanged: ${sameMessage}`,
+        key: "dbg",
+        duration: 30000,
       });
+
+      const tx = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+
+      // Original path, to restore after diagnosing:
+      // const tx = await sendTransaction(transaction, connection, {
+      //   skipPreflight: true, // already simulated above
+      //   preflightCommitment: "confirmed",
+      // });
 
       setStatus("Confirming on-chain…");
       console.log(`Broadcasted Tx Signature: https://explorer.solana.com/tx/${tx}?cluster=devnet`);
 
       await connection.confirmTransaction(
-        { signature: tx, ...latest },
+        { signature: tx, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
         "confirmed"
       );
 
@@ -541,9 +561,6 @@ export function MerchantSettlement() {
 
       setStatus("Signature valid. Settle online to confirm funds.");
 
-      // A missing merchant signature usually means the wallet app signed with a
-      // different account than the one the adapter reports (stale MWA authorization).
-      // Disconnecting clears it, so the wallet app asks which account to use again.
       const missingSig = /missing signature for public key/i.test(String(e?.message));
       reportError(e, {
         title: "Settlement failed",
