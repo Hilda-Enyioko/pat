@@ -278,7 +278,7 @@ export function SignPayment({
             <div className="rounded-[18px] border border-ink/10 bg-white p-3">
               <QRCodeCanvas value={payload} size={260} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0f0f0e" className="block h-auto max-w-full" />
             </div>
-            <p className="m-0 text-center font-display text-4xl font-black uppercase leading-none tracking-[-0.05em] [font-stretch:85%]">
+            <p className="m-0 text-center font-display text-4xl font-black uppercase leading-none tracking-tighter font-stretch-85%">
               {lamportsToSol(intent.amount)} SOL
             </p>
             <p className="m-0 font-mono text-xs text-muted-foreground">
@@ -292,7 +292,7 @@ export function SignPayment({
         ) : (
           <section
             aria-label="Signed payment preview"
-            className="grainy on-dark flex min-h-[420px] flex-col justify-between rounded-[22px] bg-card-dark p-6 text-white"
+            className="grainy on-dark flex min-h-105 flex-col justify-between rounded-[22px] bg-card-dark p-6 text-white"
           >
             <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-white/60">Payment intent · 230 B</span>
             <QrCode className="mx-auto size-28 stroke-[1.2] text-white/85" aria-hidden="true" />
@@ -553,7 +553,7 @@ export function MerchantSettlement() {
             <h2 id="scanner-title" className="m-0 mb-3 flex items-center gap-2 text-sm font-medium text-white/80">
               <ScanLine className="size-4" aria-hidden="true" /> Camera scanner
             </h2>
-            <div className="aspect-[4/3] overflow-hidden rounded-[14px] bg-black">
+            <div className="aspect-4/3 overflow-hidden rounded-[14px] bg-black">
               <Scanner
                 onScan={(r) => {
                   const value = r[0]?.rawValue;
@@ -597,7 +597,7 @@ export function MerchantSettlement() {
               </PricingCard.Badge>
             </PricingCard.Plan>
             <PricingCard.Price className="flex-wrap gap-x-3">
-              <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-[-0.05em] [font-stretch:85%]">
+              <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-tighter font-stretch-85%">
                 {parsed ? lamportsToSol(parsed.amount) : <span className="text-ink/20">0.00</span>}
               </PricingCard.MainPrice>
               <PricingCard.Period className="text-ink/75">SOL payment amount</PricingCard.Period>

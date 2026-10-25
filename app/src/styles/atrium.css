@@ -582,6 +582,21 @@ html.tab-l {
     text-transform: uppercase;
     -webkit-text-stroke: 0.012em currentColor;
   }
+
+  /* ---------- App shell header: match the landing header ----------
+     The landing scales a 1280x800 canvas by --s. Apply the same factor to
+     the header on app pages. `zoom` (not transform) so layout shrinks/grows
+     with it and page content below doesn't need compensating margins.
+     --s must be set on <html> (document.documentElement), not on .stage,
+     or it won't be visible here and the zoom falls back to 1. */
+  html.desk .shell > .hdr {
+    zoom: var(--s, 1);
+    margin: 0 40px; /* same as the landing's left/right: 40px (zoomed too) */
+  }
+  /* Phones/tablets: use the landing's side inset instead of --gut */
+  html:not(.desk) .shell > .hdr {
+    margin: 0 max(var(--tm), env(safe-area-inset-left)) 0 max(var(--tm), env(safe-area-inset-right));
+  }
 }
 
 /* ---------- Marquee + entrance ---------- */

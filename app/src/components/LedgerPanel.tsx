@@ -199,7 +199,7 @@ export function LedgerPanel({
           <PricingCard.Badge className="shrink-0 border-ink/25 bg-white/55 font-semibold text-ink">{phaseLabel}</PricingCard.Badge>
         </PricingCard.Plan>
         <PricingCard.Price className="flex-wrap gap-x-3">
-          <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-[-0.05em] [font-stretch:85%]">
+          <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-tighter font-stretch-85%]">
             {lamportsToSol(balance)}
           </PricingCard.MainPrice>
           <PricingCard.Period className="text-ink/75">{balanceLabel}</PricingCard.Period>
@@ -232,7 +232,7 @@ export function LedgerPanel({
         {(stage === "confirm" || stage === "working") && (
           <div className="grainy on-dark space-y-4 rounded-[18px] bg-card-dark p-5 text-white">
             <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-white/60">Withdraw returns</p>
-            <p className="m-0 font-display text-5xl font-black leading-[0.85] tracking-[-0.05em] [font-stretch:85%]">
+            <p className="m-0 font-display text-5xl font-black leading-[0.85] tracking-tighter font-stretch-85%">
               {lamportsToSol(refund)} <span className="text-xl tracking-normal">SOL</span>
             </p>
             <p className="m-0 text-sm leading-relaxed text-white/70">
