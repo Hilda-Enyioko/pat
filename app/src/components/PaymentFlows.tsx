@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import { PublicKey, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import nacl from "tweetnacl";
@@ -326,7 +326,7 @@ function PendingList({
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, wallet, disconnect, select } = useWallet();
+  const { publicKey, sendTransaction } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
@@ -338,23 +338,6 @@ export function MerchantSettlement() {
   const [pending, setPending] = useState<MerchantPending[]>(getMerchantPending);
   // The scanner reports the same code many times a second; handle each code once.
   const lastScan = useRef<string | null>(null);
-  const reconnecting = useRef(false);
-
-  // Confirm the account PAT picked up once a reconnect asked for from a failed settle lands.
-  useEffect(() => {
-    if (!reconnecting.current || !publicKey) return;
-    reconnecting.current = false;
-    notify.success("Wallet reconnected", `Settling as ${shortKey(publicKey.toBase58())}. Tap Settle on-chain again.`, { key: "wallet" });
-  }, [publicKey]);
-
-  // A fresh connection makes the wallet app hand over the account that's active in
-  // it now, instead of the one a cached Mobile Wallet Adapter authorisation remembers.
-  async function reconnectWallet() {
-    const name = wallet?.adapter.name;
-    reconnecting.current = true;
-    await disconnect().catch(() => undefined);
-    if (name) select(name);
-  }
 
   function consume(value: string) {
     try {
@@ -479,19 +462,25 @@ export function MerchantSettlement() {
       // 3. Assemble Transaction (a factory, so simulation never touches the
       //    instance that goes to the wallet)
       // -----------------------------------------------------------------------
+      // A versioned transaction, not a legacy one: on Android the Mobile Wallet
+      // Adapter serializes the transaction before the wallet signs it, and a
+      // legacy Transaction refuses to serialize unsigned ("Missing signature for
+      // public key"). Versioned transactions serialize without that check.
       const latest = await connection.getLatestBlockhash("confirmed");
       const buildTx = () =>
-        new Transaction({
-          feePayer: publicKey,
-          blockhash: latest.blockhash,
-          lastValidBlockHeight: latest.lastValidBlockHeight,
-        }).add(...instructions);
+        new VersionedTransaction(
+          new TransactionMessage({
+            payerKey: publicKey,
+            recentBlockhash: latest.blockhash,
+            instructions,
+          }).compileToV0Message()
+        );
 
       // -----------------------------------------------------------------------
       // 4. Preflight Simulation & Diagnostic Logging (on a throwaway instance)
       // -----------------------------------------------------------------------
       setStatus("Simulating transaction on-chain…");
-      const sim = await connection.simulateTransaction(buildTx(), undefined, true);
+      const sim = await connection.simulateTransaction(buildTx(), { sigVerify: false, commitment: "confirmed" });
 
       console.group("🔬 [PAT Settlement] Simulation Result");
       console.log("Units Consumed:", sim.value.unitsConsumed);
@@ -594,15 +583,10 @@ export function MerchantSettlement() {
 
       setStatus("Signature valid. Settle online to confirm funds.");
 
-      // A missing signature means the wallet app signed with a different account
-      // than the one PAT is connected to (a stale Mobile Wallet Adapter authorisation).
-      const missingSig = /missing signature for public key/i.test(String(e?.message));
       reportError(e, {
         title: "Settlement failed",
         message: reason,
-        actions: missingSig
-          ? [{ label: "Reconnect wallet", onClick: () => void reconnectWallet() }]
-          : [{ label: "Try again", onClick: () => void settle() }],
+        actions: [{ label: "Try again", onClick: () => void settle() }],
       });
     } finally {
       setSettling(false);
@@ -706,18 +690,8 @@ export function MerchantSettlement() {
                   text={settling ? "Settling…" : settled ? "Settled" : "Settle on-chain"}
                 />
                 {publicKey && !settled && (
-                  <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 text-center text-xs text-muted-foreground">
-                    <span>
-                      Settling as <span className="font-mono text-ink">{shortKey(publicKey.toBase58())}</span>, which pays the fee.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void reconnectWallet()}
-                      disabled={settling}
-                      className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline underline-offset-4"
-                    >
-                      Reconnect
-                    </button>
+                  <p className="m-0 text-center text-xs text-muted-foreground">
+                    Settling as <span className="font-mono text-ink">{shortKey(publicKey.toBase58())}</span>, which pays the fee.
                   </p>
                 )}
               </>
