@@ -308,7 +308,7 @@ export function SignPayment({
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, signTransaction, disconnect } = useWallet();
+  const { publicKey, signTransaction, disconnect } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
