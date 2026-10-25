@@ -123,6 +123,10 @@ function AppContent() {
   // The landing is a viewport-locked composition: no document scroll.
   useEffect(() => {
     document.documentElement.classList.toggle("locked", guardedView === "landing");
+    // The wallet picker restores the body's overflow to what it read when it opened.
+    // Opened on the locked landing that's "hidden", which would then stick to every
+    // other page until a reload.
+    if (guardedView !== "landing") document.body.style.removeProperty("overflow");
   }, [guardedView]);
 
   const disconnectWallet = () => {
@@ -253,7 +257,14 @@ function AppContent() {
   } else if (guardedView === "sign") {
     const signable = ledgers.filter(isSignable);
     const lockedCount = ledgers.filter(isLocked).length;
-    content = <SignPayment ledgers={signable} lockedCount={lockedCount} />;
+    const pending = ledgers
+      .filter((l) => !l.withdrawn)
+      .flatMap((l) => l.history ?? [])
+      .filter((h) => h.status === "SIGNED" && h.payload)
+      .sort((a, b) => b.createdAt - a.createdAt);
+    content = (
+      <SignPayment ledgers={signable} lockedCount={lockedCount} pending={pending} onSigned={() => void reload()} />
+    );
   } else {
     content = <MerchantSettlement />;
   }

@@ -127,7 +127,7 @@ export function mapProgramError(err: unknown, logs?: string[]): string {
     return "You rejected the wallet request.";
   }
   if (lower.includes("missing signature for public key")) {
-    return "Your wallet returned the transaction without the merchant's signature. Check that the active account in your wallet app is the merchant wallet, reconnect, and try again.";
+    return "Your wallet app signed with a different account from the one PAT is connected to. Reconnect so PAT picks up the account that's active in your wallet app, then settle again.";
   }
 
   return message || "Settlement failed.";

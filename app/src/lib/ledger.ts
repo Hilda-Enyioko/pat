@@ -32,6 +32,38 @@ export function getMerchantReceipts(merchantKey: string): MerchantReceipt[] {
   return raw ? JSON.parse(raw) : [];
 }
 
+/** A payment the merchant verified but hasn't settled yet, kept so it can be settled later. */
+export interface MerchantPending {
+  paymentId: string;
+  payload: string;
+  amount: string;
+  payer: string;
+  merchant: string;
+  verifiedAt: number;
+}
+
+const MERCHANT_PENDING_KEY = "pat:merchant_pending";
+
+export function getMerchantPending(): MerchantPending[] {
+  try {
+    return JSON.parse(localStorage.getItem(MERCHANT_PENDING_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveMerchantPending(entry: MerchantPending): MerchantPending[] {
+  const list = [entry, ...getMerchantPending().filter((p) => p.paymentId !== entry.paymentId)];
+  localStorage.setItem(MERCHANT_PENDING_KEY, JSON.stringify(list));
+  return list;
+}
+
+export function removeMerchantPending(paymentId: string): MerchantPending[] {
+  const list = getMerchantPending().filter((p) => p.paymentId !== paymentId);
+  localStorage.setItem(MERCHANT_PENDING_KEY, JSON.stringify(list));
+  return list;
+}
+
 export interface PendingIntent {
   paymentId: string;
   amount: string;

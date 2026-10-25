@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { PublicKey, Transaction } from "@solana/web3.js";
-import { QRCodeCanvas } from "qrcode.react";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import nacl from "tweetnacl";
@@ -16,6 +15,12 @@ import {
   nowAdjusted,
   rollbackPending,
   LedgerError,
+  getMerchantPending,
+  removeMerchantPending,
+  saveMerchantPending,
+  saveMerchantReceipt,
+  type HistoryEntry,
+  type MerchantPending,
   type OfflineLedger,
 } from "../lib/ledger";
 import {
@@ -31,6 +36,7 @@ import { Field, inputClass } from "./site/Field";
 import { PageHeading } from "./site/PageHeading";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
+import { PaymentQr, PaymentQrDialog, type ShownPayment } from "./site/PaymentQr";
 import { InputError, notify, reportError } from "../lib/notify";
 
 const LEDGER_MESSAGES: Partial<Record<string, string>> = {
@@ -40,21 +46,37 @@ const LEDGER_MESSAGES: Partial<Record<string, string>> = {
   INSUFFICIENT_OFFLINE_BALANCE: "Amount exceeds your available offline balance.",
 };
 
+const when = (unix: number) =>
+  new Date(unix * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+const hexOf = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+const toShown = (h: HistoryEntry): ShownPayment => ({
+  payload: h.payload!,
+  amount: BigInt(h.amount),
+  paymentId: h.paymentId,
+  sequence: h.sequence,
+});
+
 export function SignPayment({
   ledgers,
   lockedCount = 0,
+  pending = [],
+  onSigned,
 }: {
   ledgers: OfflineLedger[];
   lockedCount?: number;
+  /** Signed payments not settled yet, from every reservation on this device. */
+  pending?: HistoryEntry[];
+  onSigned?: () => void;
 }) {
   const { publicKey, signMessage } = useWallet();
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("0.01");
   const [memo, setMemo] = useState("");
   const [selected, setSelected] = useState(ledgers[0]?.reservation ?? "");
-  const [payload, setPayload] = useState<string | null>(null);
-  const [intent, setIntent] = useState<SignedIntentPayload | null>(null);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [shown, setShown] = useState<ShownPayment | null>(null);
+  const [reopened, setReopened] = useState<ShownPayment | null>(null);
 
   useEffect(() => {
     if (!ledgers.some((l) => l.reservation === selected)) {
@@ -147,8 +169,8 @@ export function SignPayment({
         payload: encoded,
       });
 
-      setIntent(next);
-      setPayload(encoded);
+      setShown({ payload: encoded, amount: lamports, paymentId, sequence: debit.sequence });
+      onSigned?.();
       notify.success("Payment signed", "Show the QR code to the merchant.");
     } catch (error) {
       if (paymentId) await rollbackPending(paymentId);
@@ -156,37 +178,6 @@ export function SignPayment({
       reportError(ledgerMessage ? new InputError(ledgerMessage) : error, { title: "Couldn't sign this payment" });
     }
   }
-
-  const handleCopy = async () => {
-    if (!payload) return;
-    try {
-      await navigator.clipboard.writeText(payload);
-      setCopySuccess(true);
-      notify.success("Payload copied", undefined, { key: "copy" });
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch {
-      notify.warning("Couldn't copy", "Your browser blocked the clipboard. Use Download .pat instead.");
-    }
-  };
-
-  const handleDownload = () => {
-    if (!payload || !intent) return;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-    const hexId = Array.from(intent.paymentId)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    a.download = `${hexId}.pat`;
-    a.click();
-  };
-
-
-  const hexShort = intent
-    ? Array.from(intent.paymentId)
-        .slice(0, 4)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-    : "";
 
   return (
     <main className="page">
@@ -269,25 +260,13 @@ export function SignPayment({
           </form>
         </section>
 
-        {payload && intent ? (
+        {shown ? (
           <section aria-label="Signed payment" className="flex flex-col items-center gap-5 rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
             <div className="flex w-full items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Show to merchant</span>
               <span className="rounded-full bg-yellow px-2.5 py-0.5 text-[11px] font-semibold">SIGNED</span>
             </div>
-            <div className="rounded-[18px] border border-ink/10 bg-white p-3">
-              <QRCodeCanvas value={payload} size={260} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0f0f0e" className="block h-auto max-w-full" />
-            </div>
-            <p className="m-0 text-center font-display text-4xl font-black uppercase leading-none tracking-tighter font-stretch-85%">
-              {lamportsToSol(intent.amount)} SOL
-            </p>
-            <p className="m-0 font-mono text-xs text-muted-foreground">
-              Payment {hexShort}… · sequence {intent.sequence}
-            </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              <PillButton type="button" size="sm" tone="light" text={copySuccess ? "Copied!" : "Copy payload"} onClick={() => void handleCopy()} />
-              <PillButton type="button" size="sm" tone="light" text="Download .pat" onClick={handleDownload} />
-            </div>
+            <PaymentQr payment={shown} />
           </section>
         ) : (
           <section
@@ -302,20 +281,80 @@ export function SignPayment({
           </section>
         )}
       </div>
+
+      {pending.length > 0 && (
+        <section aria-labelledby="pending-title" className="mt-6 rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
+          <h2 id="pending-title" className="m-0 mb-1 text-lg font-semibold">Waiting to settle</h2>
+          <p className="m-0 mb-4 text-sm text-muted-foreground">
+            Signed but not on-chain yet. Show the QR again if the merchant didn&rsquo;t settle it.
+          </p>
+          <PendingList
+            items={pending.map((h) => ({
+              id: h.paymentId,
+              amount: h.amount,
+              detail: `${when(h.createdAt)} · to ${shortKey(h.merchant)}${h.memo ? ` · ${h.memo}` : ""}`,
+              action: "Show QR",
+              onOpen: () => setReopened(toShown(h)),
+            }))}
+          />
+        </section>
+      )}
+      <PaymentQrDialog payment={reopened} onClose={() => setReopened(null)} />
     </main>
+  );
+}
+
+function PendingList({
+  items,
+}: {
+  items: { id: string; amount: string; detail: string; action: string; disabled?: boolean; onOpen: () => void }[];
+}) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {items.map((item) => (
+        <li key={item.id} className="flex items-center justify-between gap-4 rounded-[14px] border border-ink/8 px-4 py-3">
+          <span className="min-w-0">
+            <span className="block font-mono text-sm font-semibold">{lamportsToSol(BigInt(item.amount))} SOL</span>
+            <span className="block truncate font-mono text-xs text-muted-foreground">{item.detail}</span>
+          </span>
+          <PillButton type="button" size="sm" tone="light" text={item.action} disabled={item.disabled} onClick={item.onOpen} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export function MerchantSettlement() {
   const { connection } = useConnection();
-  const { publicKey, signTransaction, disconnect } = useWallet();
+  const { publicKey, sendTransaction, wallet, disconnect, select } = useWallet();
   const [raw, setRaw] = useState("");
   const [status, setStatus] = useState("Scan or paste a signed payment.");
   const [parsed, setParsed] = useState<SignedIntentPayload | null>(null);
   const [signature, setSignature] = useState<Uint8Array | null>(null);
+  // The payload exactly as verified, whether it was scanned or pasted.
+  const [verified, setVerified] = useState("");
   const [settling, setSettling] = useState(false);
+  // Verified payments still to settle, kept on this device so none are lost to a refresh.
+  const [pending, setPending] = useState<MerchantPending[]>(getMerchantPending);
   // The scanner reports the same code many times a second; handle each code once.
   const lastScan = useRef<string | null>(null);
+  const reconnecting = useRef(false);
+
+  // Confirm the account PAT picked up once a reconnect asked for from a failed settle lands.
+  useEffect(() => {
+    if (!reconnecting.current || !publicKey) return;
+    reconnecting.current = false;
+    notify.success("Wallet reconnected", `Settling as ${shortKey(publicKey.toBase58())}. Tap Settle on-chain again.`, { key: "wallet" });
+  }, [publicKey]);
+
+  // A fresh connection makes the wallet app hand over the account that's active in
+  // it now, instead of the one a cached Mobile Wallet Adapter authorisation remembers.
+  async function reconnectWallet() {
+    const name = wallet?.adapter.name;
+    reconnecting.current = true;
+    await disconnect().catch(() => undefined);
+    if (name) select(name);
+  }
 
   function consume(value: string) {
     try {
@@ -330,12 +369,6 @@ export function MerchantSettlement() {
         throw new InputError("That isn't a PAT payment. Scan the payer's QR code or paste the full payload.");
       }
       if (sig.length !== 64) throw new InputError("The payment's signature is the wrong length.");
-      if (publicKey && !next.merchant.equals(publicKey)) {
-        throw new InputError("This payment is addressed to a different merchant wallet.");
-      }
-      if (Number(next.expiresAt) < Math.floor(Date.now() / 1000)) {
-        throw new InputError("This payment has expired. Ask the payer to sign a new one.");
-      }
       if (
         !nacl.sign.detached.verify(
           serializeIntentSigningBytes(next),
@@ -345,13 +378,41 @@ export function MerchantSettlement() {
       ) {
         throw new Error("The payer's signature doesn't match this payment. It may have been altered. Don't accept it.");
       }
+      const paymentId = hexOf(next.paymentId);
       setParsed(next);
       setSignature(sig);
-      setStatus("Signature valid. Settle online to confirm funds.");
-      notify.success("Payment verified", `${lamportsToSol(next.amount)} SOL, signed by the payer.`, { key: "scan" });
+      setVerified(value);
+      setPending(
+        saveMerchantPending({
+          paymentId,
+          payload: value,
+          amount: next.amount.toString(),
+          payer: next.payer.toBase58(),
+          merchant: next.merchant.toBase58(),
+          verifiedAt: Math.floor(Date.now() / 1000),
+        }),
+      );
+      // The chain accepts a payment until the reservation's settle window closes, so an
+      // old intent can still settle; the simulation reports it if the window has closed.
+      const stale = Number(next.expiresAt) < Math.floor(Date.now() / 1000);
+      setStatus(
+        stale
+          ? "Signature valid, signed over an hour ago. It settles if the payer's settle window is still open."
+          : "Signature valid. Settle online to confirm funds.",
+      );
+      if (publicKey && !next.merchant.equals(publicKey)) {
+        notify.warning(
+          "Paid to another wallet",
+          `This payment pays ${shortKey(next.merchant.toBase58())}, not the connected wallet. You can still settle it; the funds go to ${shortKey(next.merchant.toBase58())}.`,
+          { key: "scan" },
+        );
+      } else {
+        notify.success("Payment verified", `${lamportsToSol(next.amount)} SOL, signed by the payer.`, { key: "scan" });
+      }
     } catch (e) {
       setParsed(null);
       setSignature(null);
+      setVerified("");
       setStatus("Scan or paste a signed payment.");
       if (e instanceof InputError) notify.error("Invalid payment", e.message, { key: "scan" });
       else reportError(e, { title: "Don't accept this payment" });
@@ -361,23 +422,13 @@ export function MerchantSettlement() {
   async function settle() {
     if (!parsed || !signature) return;
     if (!publicKey) {
-      notify.warning("Connect the merchant wallet", "Settling needs the wallet this payment is addressed to.");
-      return;
-    }
-
-    // consume() only checks the merchant if a wallet was connected at scan time
-    // and never re-runs after an account switch, so verify again here.
-    if (!parsed.merchant.equals(publicKey)) {
-      notify.error(
-        "Wrong wallet connected",
-        `This payment is for ${shortKey(parsed.merchant.toBase58())}, but ${shortKey(publicKey.toBase58())} is connected. Switch accounts in your wallet app and reconnect.`,
-        { key: "scan" },
-      );
+      notify.warning("Connect a wallet", "Settling needs a wallet with a little SOL for the fee. The funds go to the merchant either way.");
       return;
     }
 
     setSettling(true);
     setStatus("Checking balance and preparing preflight logs…");
+    const hexPaymentId = hexOf(parsed.paymentId);
 
     try {
       // -----------------------------------------------------------------------
@@ -385,9 +436,10 @@ export function MerchantSettlement() {
       // -----------------------------------------------------------------------
       const balance = await connection.getBalance(publicKey, "confirmed");
       console.group("[PAT Settlement] Preflight Context");
-      console.log("Settler (Merchant):", publicKey.toBase58());
+      console.log("Settler:", publicKey.toBase58());
       console.log(`Settler Balance: ${balance / 1e9} SOL (${balance} lamports)`);
       console.log("Payer:", parsed.payer.toBase58());
+      console.log("Merchant:", parsed.merchant.toBase58());
       console.log("Reservation Account:", parsed.reservation.toBase58());
       console.log("Amount (Lamports):", parsed.amount.toString());
       console.log("Sequence:", parsed.sequence);
@@ -396,7 +448,7 @@ export function MerchantSettlement() {
 
       if (balance === 0) {
         throw new Error(
-          "Merchant wallet has 0 SOL. Request an airdrop on Devnet to pay the transaction fee."
+          "The connected wallet has 0 SOL. Request an airdrop on Devnet to pay the transaction fee."
         );
       }
 
@@ -457,38 +509,16 @@ export function MerchantSettlement() {
         throw simError;
       }
 
-      // Fresh, untouched instance for the wallet.
-      const transaction = buildTx();
-
       // -----------------------------------------------------------------------
       // 5. Sign & broadcast through the wallet
       // -----------------------------------------------------------------------
-      // TEMPORARY DIAGNOSTIC: sign first and report what the wallet returns,
-      // so it's readable on the phone. Once the cause is known, delete this
-      // block and restore the sendTransaction call below.
+      // sendTransaction lets the wallet sign and send in one step, which mobile
+      // wallets (Mobile Wallet Adapter, in-app browsers) handle most reliably.
       setStatus("Approve transaction in your wallet…");
-      if (!signTransaction) throw new Error("This wallet can't sign transactions.");
-      const signed = await signTransaction(transaction);
-
-      const report = signed.signatures
-        .map((s) => `${shortKey(s.publicKey.toBase58())}: ${s.signature ? "signed" : "MISSING"}`)
-        .join("\n");
-      const sameMessage = signed.serializeMessage().equals(transaction.serializeMessage());
-      notify.toast({
-        tone: "info",
-        title: "Wallet returned",
-        message: `${report}\nmessage unchanged: ${sameMessage}`,
-        key: "dbg",
-        duration: 30000,
+      const tx = await sendTransaction(buildTx(), connection, {
+        skipPreflight: true, // already simulated above
+        preflightCommitment: "confirmed",
       });
-
-      const tx = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-
-      // Original path, to restore after diagnosing:
-      // const tx = await sendTransaction(transaction, connection, {
-      //   skipPreflight: true, // already simulated above
-      //   preflightCommitment: "confirmed",
-      // });
 
       setStatus("Confirming on-chain…");
       console.log(`Broadcasted Tx Signature: https://explorer.solana.com/tx/${tx}?cluster=devnet`);
@@ -501,26 +531,20 @@ export function MerchantSettlement() {
       // -----------------------------------------------------------------------
       // 6. Record Settled Entry
       // -----------------------------------------------------------------------
-      const hexPaymentId = Array.from(parsed.paymentId)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      setPending(removeMerchantPending(hexPaymentId));
 
       // A. Record in Merchant Received History (always available to the merchant)
       try {
-        const receipt = {
+        saveMerchantReceipt({
           signature: tx,
           paymentId: hexPaymentId,
           reservation: parsed.reservation.toBase58(),
           payer: parsed.payer.toBase58(),
-          merchant: publicKey.toBase58(),
+          merchant: parsed.merchant.toBase58(),
           amount: parsed.amount.toString(),
           settledAt: Math.floor(Date.now() / 1000),
           memo: `Settled tx: ${tx.slice(0, 8)}…`,
-        };
-
-        const merchantKey = `pat:merchant_history:${publicKey.toBase58()}`;
-        const existing = JSON.parse(localStorage.getItem(merchantKey) || "[]");
-        localStorage.setItem(merchantKey, JSON.stringify([receipt, ...existing]));
+        });
       } catch (e) {
         console.warn("Failed saving to merchant receipts:", e);
       }
@@ -529,14 +553,14 @@ export function MerchantSettlement() {
       try {
         await addHistoryEntry(parsed.reservation.toBase58(), {
           paymentId: hexPaymentId,
-          merchant: publicKey.toBase58(),
+          merchant: parsed.merchant.toBase58(),
           amount: parsed.amount.toString(),
           createdAt: Number(parsed.createdAt),
           expiresAt: Number(parsed.expiresAt),
           sequence: parsed.sequence,
           memo: `Settled tx: ${tx.slice(0, 8)}…`,
           status: "SETTLED",
-          payload: raw || undefined,
+          payload: verified || undefined,
         });
       } catch (historyErr: any) {
         // NO_LEDGER is expected on an independent merchant machine
@@ -559,14 +583,25 @@ export function MerchantSettlement() {
       }
       console.groupEnd();
 
+      const reason = mapProgramError(e);
+      if (reason === "Already settled") {
+        // Settled earlier (from this device or another); nothing left to do.
+        setPending(removeMerchantPending(hexPaymentId));
+        setStatus("Payment settled ✔  Already on-chain.");
+        notify.info("Already settled", "This payment is already on-chain.", { key: "scan" });
+        return;
+      }
+
       setStatus("Signature valid. Settle online to confirm funds.");
 
+      // A missing signature means the wallet app signed with a different account
+      // than the one PAT is connected to (a stale Mobile Wallet Adapter authorisation).
       const missingSig = /missing signature for public key/i.test(String(e?.message));
       reportError(e, {
         title: "Settlement failed",
-        message: mapProgramError(e),
+        message: reason,
         actions: missingSig
-          ? [{ label: "Disconnect wallet", onClick: () => void disconnect() }]
+          ? [{ label: "Reconnect wallet", onClick: () => void reconnectWallet() }]
           : [{ label: "Try again", onClick: () => void settle() }],
       });
     } finally {
@@ -577,6 +612,8 @@ export function MerchantSettlement() {
   const isValid = status.startsWith("Signature valid") || status.startsWith("Payment settled");
 
   const settled = status.startsWith("Payment settled");
+  const openId = parsed ? hexOf(parsed.paymentId) : null;
+  const waiting = pending.filter((p) => p.paymentId !== openId);
 
   return (
     <main className="page">
@@ -664,10 +701,25 @@ export function MerchantSettlement() {
                   type="button"
                   size="lg"
                   className="w-full"
-                  disabled={settling}
+                  disabled={settling || settled}
                   onClick={() => void settle()}
-                  text={settling ? "Settling…" : "Settle on-chain"}
+                  text={settling ? "Settling…" : settled ? "Settled" : "Settle on-chain"}
                 />
+                {publicKey && !settled && (
+                  <p className="m-0 flex flex-wrap items-center justify-center gap-x-2 text-center text-xs text-muted-foreground">
+                    <span>
+                      Settling as <span className="font-mono text-ink">{shortKey(publicKey.toBase58())}</span>, which pays the fee.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void reconnectWallet()}
+                      disabled={settling}
+                      className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline underline-offset-4"
+                    >
+                      Reconnect
+                    </button>
+                  </p>
+                )}
               </>
             ) : (
               <PricingCard.Description className="text-sm">
@@ -677,6 +729,28 @@ export function MerchantSettlement() {
           </PricingCard.Body>
         </PricingCard.Card>
       </div>
+
+      {waiting.length > 0 && (
+        <section aria-labelledby="waiting-title" className="mt-6 rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
+          <h2 id="waiting-title" className="m-0 mb-1 text-lg font-semibold">Waiting to settle</h2>
+          <p className="m-0 mb-4 text-sm text-muted-foreground">
+            Payments you verified on this device but haven&rsquo;t settled yet. Open one to settle it.
+          </p>
+          <PendingList
+            items={waiting.map((p) => ({
+              id: p.paymentId,
+              amount: p.amount,
+              detail: `${when(p.verifiedAt)} · from ${shortKey(p.payer)}`,
+              action: "Open",
+              disabled: settling,
+              onOpen: () => {
+                consume(p.payload);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              },
+            }))}
+          />
+        </section>
+      )}
     </main>
   );
 }

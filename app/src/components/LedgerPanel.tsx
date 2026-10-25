@@ -22,6 +22,7 @@ import { withdrawReservation } from "../lib/withdraw";
 import { lamportsToSol, shortKey } from "../lib/format";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
+import { PaymentQrDialog, type ShownPayment } from "./site/PaymentQr";
 import { notify, reportError } from "../lib/notify";
 
 type WithdrawStage = "idle" | "checking" | "confirm" | "working";
@@ -70,6 +71,7 @@ export function LedgerPanel({
   const [refund, setRefund] = useState<bigint>(0n);
   const [unsettled, setUnsettled] = useState(0);
   const [, setTick] = useState(0);
+  const [shown, setShown] = useState<ShownPayment | null>(null);
 
   const ledgerRef = useRef(ledger);
   ledgerRef.current = ledger;
@@ -294,10 +296,22 @@ export function LedgerPanel({
                 {(h.failureReason || h.status === "EXPIRED") && (
                   <span className="justify-self-end text-xs text-red">{h.failureReason ?? "settle window closed"}</span>
                 )}
+                {h.status === "SIGNED" && h.payload && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShown({ payload: h.payload!, amount: BigInt(h.amount), paymentId: h.paymentId, sequence: h.sequence })
+                    }
+                    className="cursor-pointer justify-self-end border-0 bg-transparent p-0 text-xs font-semibold text-ink underline underline-offset-4"
+                  >
+                    Show QR
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
+        <PaymentQrDialog payment={shown} onClose={() => setShown(null)} />
       </PricingCard.Body>
     </PricingCard.Card>
   );
