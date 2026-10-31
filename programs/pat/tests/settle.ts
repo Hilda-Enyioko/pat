@@ -10,8 +10,8 @@ import { randomBytes } from "crypto";
 import { Pat } from "../../../target/types/pat";
 import { Intent, intentSigningBytes, toProgramIntent } from "./helpers/intent";
 
-const RESERVATION_SPACE = 109;
-const PAYMENT_SPACE = 174;
+const RESERVATION_SPACE = 142;
+const PAYMENT_SPACE = 175;
 const CLUSTER_LOCALNET_PROGRAM_CONST = 1; // must equal CLUSTER_ID in constants.rs
 const SOL = (n: number) => new BN(Math.round(n * LAMPORTS_PER_SOL));
 

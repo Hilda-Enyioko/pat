@@ -30,7 +30,7 @@ const T0 = 1_700_000_000;
 const DAY = 86_400;
 const GRACE = 30 * 60;
 const SOL = 1_000_000_000n;
-const RESERVATION_SPACE = 109n; // pinned in state.rs tests
+const RESERVATION_SPACE = 142n;
 
 let context: ProgramTestContext;
 let provider: BankrunProvider;

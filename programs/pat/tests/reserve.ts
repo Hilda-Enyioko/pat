@@ -5,8 +5,8 @@ import { expect } from "chai";
 import { randomBytes } from "crypto";
 import { Pat } from "../../../target/types/pat";
 
-const RESERVATION_SPACE = 109;
-const PAYMENT_SPACE = 174;
+const RESERVATION_SPACE = 142;
+const PAYMENT_SPACE = 175;
 const SETTLE_GRACE_SECS = 30 * 60;
 const TX_FEE = 5_000;
 
