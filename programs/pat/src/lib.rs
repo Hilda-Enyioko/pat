@@ -13,7 +13,7 @@ pub use error::*;
 pub use instructions::*;
 pub use events::*;
 
-declare_id!("HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh");
+declare_id!("FZZBN6jwVzWMKR67rta8MewDZPqG8mRHP5igK6qwN8fT");
 
 #[program]
 pub mod pat {

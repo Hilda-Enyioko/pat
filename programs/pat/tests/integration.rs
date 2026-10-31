@@ -816,6 +816,7 @@ struct DFixture {
     svm: LiteSVM,
     owner: Keypair,
     keeper: Keypair, // the delegate
+    #[allow(dead_code)]
     admin: Keypair,
     merchant: Keypair, // registered payout wallet
     reservation: Pubkey,

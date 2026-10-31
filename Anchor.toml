@@ -7,13 +7,14 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-pat = "HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh"
+pat = "FZZBN6jwVzWMKR67rta8MewDZPqG8mRHP5igK6qwN8fT"
 
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
+build-v0 = "cargo build-sbf --manifest-path programs/pat/Cargo.toml --arch v0"
 test = "cargo test"
 
 [hooks]
