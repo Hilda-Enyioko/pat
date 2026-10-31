@@ -126,9 +126,6 @@ export function mapProgramError(err: unknown, logs?: string[]): string {
   if (lower.includes("user rejected") || lower.includes("rejected the request")) {
     return "You rejected the wallet request.";
   }
-  if (lower.includes("missing signature for public key")) {
-    return "Your wallet app signed with a different account from the one PAT is connected to. Reconnect so PAT picks up the account that's active in your wallet app, then settle again.";
-  }
 
   return message || "Settlement failed.";
 }
