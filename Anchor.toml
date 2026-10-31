@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-pat = "FZZBN6jwVzWMKR67rta8MewDZPqG8mRHP5igK6qwN8fT"
+pat = "HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh"
 
 [provider]
 cluster = "devnet"

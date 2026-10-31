@@ -33,6 +33,7 @@ pub struct Reservation {
     pub created_at: i64,       // 8
     pub expires_at: i64,       // 8   end of the offline spending window
     pub settle_deadline: i64,  // 8   expires_at + grace: settle cutoff and earliest withdraw
+    pub delegate: Option<Pubkey>, // 33  Some = USSD-rail reservation; only this key may settle_delegated
     pub bump: u8,              // 1
 }
 // INIT_SPACE = 101, account size = 8 + 101 = 109
@@ -114,6 +115,18 @@ impl Reservation {
             .checked_add(SETTLE_GRACE_SECS)
             .ok_or(error!(PatError::Overflow))
     }
+
+        pub fn is_delegated(&self) -> bool {
+        self.delegate.is_some()
+    }
+
+    pub fn validate_delegate(delegate: &Pubkey, owner: &Pubkey) -> Result<()> {
+        require!(
+            *delegate != Pubkey::default() && *delegate != *owner,
+            PatError::InvalidDelegate
+        );
+        Ok(())
+    }
 }
 
 // ───────────────────────── Payment ─────────────────────────
@@ -122,6 +135,12 @@ impl Reservation {
 pub enum PaymentStatus {
     Settled,
     // Reversed, // reserved for a future reverse-payment feature
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
+pub enum PaymentRail {
+    Qr,
+    Ussd,
 }
 
 /// On-chain record of one settled payment. Existence = CONFIRMED, and it is the replay guard.
@@ -140,12 +159,36 @@ pub struct Payment {
     pub settled_at: i64,        // 8
     pub settled_slot: u64,      // 8
     pub sequence: u32,          // 4   from the intent; enables future equivocation proofs
+    pub rail: PaymentRail,      // 1
     pub bump: u8,               // 1
 }
 // INIT_SPACE = 166, account size = 8 + 166 = 174
 
 impl Payment {
     pub const SPACE: usize = 8 + Self::INIT_SPACE;
+}
+
+/// Program-wide settings. PDA: ["config"]
+#[account]
+#[derive(InitSpace)]
+pub struct Config {
+    pub admin: Pubkey, // 32  only key allowed to register merchants
+    pub bump: u8,      // 1
+}
+impl Config {
+    pub const SPACE: usize = 8 + Self::INIT_SPACE; // 41
+}
+
+/// USSD merchant registry entry. PDA: ["merchant", code.to_le_bytes()]
+#[account]
+#[derive(InitSpace)]
+pub struct Merchant {
+    pub code: u32,      // 4   the short code dialled over USSD
+    pub payout: Pubkey, // 32
+    pub bump: u8,       // 1
+}
+impl Merchant {
+    pub const SPACE: usize = 8 + Self::INIT_SPACE; // 45
 }
 
 // ───────────────────────── PaymentIntent (not an account) ─────────────────────────
@@ -226,6 +269,7 @@ mod tests {
             created_at: 1_000,
             expires_at: 1_000 + 24 * 60 * 60,
             settle_deadline: 1_000 + 24 * 60 * 60 + SETTLE_GRACE_SECS,
+            delegate: None,
             bump: 255,
         }
     }
@@ -246,12 +290,22 @@ mod tests {
         }
     }
 
-    #[test]
+        #[test]
     fn account_sizes_are_pinned() {
-        assert_eq!(Reservation::INIT_SPACE, 101);
-        assert_eq!(Reservation::SPACE, 109);
-        assert_eq!(Payment::INIT_SPACE, 166);
-        assert_eq!(Payment::SPACE, 174);
+        assert_eq!(Reservation::INIT_SPACE, 134);
+        assert_eq!(Reservation::SPACE, 142);
+        assert_eq!(Payment::INIT_SPACE, 167);
+        assert_eq!(Payment::SPACE, 175);
+        assert_eq!(Config::SPACE, 41);
+        assert_eq!(Merchant::SPACE, 45);
+    }
+
+    #[test]
+    fn delegate_validation() {
+        let owner = Pubkey::new_unique();
+        assert!(Reservation::validate_delegate(&Pubkey::new_unique(), &owner).is_ok());
+        assert!(Reservation::validate_delegate(&owner, &owner).is_err());
+        assert!(Reservation::validate_delegate(&Pubkey::default(), &owner).is_err());
     }
 
     #[test]

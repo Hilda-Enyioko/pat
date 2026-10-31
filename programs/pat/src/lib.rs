@@ -45,4 +45,34 @@ pub mod pat {
         instructions::withdraw::handle_withdraw(ctx)
     }
 
+        pub fn reserve_delegated(
+        ctx: Context<Reserve>,
+        reservation_id: u64,
+        capacity: u64,
+        per_payment_cap: u64,
+        expires_at: i64,
+        max_payments: u32,
+        delegate: Pubkey,
+    ) -> Result<()> {
+        instructions::reserve::handle_reserve_delegated(
+            ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, delegate,
+        )
+    }
+
+    pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {
+        instructions::init_config::handle_init_config(ctx)
+    }
+
+    pub fn register_merchant(ctx: Context<RegisterMerchant>, code: u32, payout: Pubkey) -> Result<()> {
+        instructions::register_merchant::handle_register_merchant(ctx, code, payout)
+    }
+
+    pub fn settle_delegated(
+        ctx: Context<SettleDelegated>,
+        payment_id: [u8; 32],
+        amount: u64,
+    ) -> Result<()> {
+        instructions::settle_delegated::handle_settle_delegated(ctx, payment_id, amount)
+    }
+
 }

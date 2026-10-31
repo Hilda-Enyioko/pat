@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use crate::state::PaymentRail;
 
 #[event]
 pub struct ReservationCreated {
@@ -12,6 +13,7 @@ pub struct ReservationCreated {
     pub created_at: i64,
     pub expires_at: i64,
     pub settle_deadline: i64,
+    pub delegate: Option<Pubkey>,
 }
 
 #[event]
@@ -29,6 +31,7 @@ pub struct PaymentSettled {
     pub settled_slot: u64,
     pub committed_total: u64,
     pub payments_settled: u32,
+    pub rail: PaymentRail,
 }
 
 #[event]
@@ -43,4 +46,11 @@ pub struct ReservationWithdrawn {
     pub unused_rent_reserve: u64,
     pub refunded_lamports: u64,
     pub withdrawn_at: i64,
+}
+
+#[event]
+pub struct MerchantRegistered {
+    pub code: u32,
+    pub payout: Pubkey,
+    pub admin: Pubkey,
 }

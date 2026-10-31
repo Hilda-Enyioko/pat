@@ -46,7 +46,7 @@ pub struct Settle<'info> {
     pub system_program: Program<'info, System>,
 }
 
-fn credit(info: &AccountInfo, amount: u64) -> Result<()> {
+pub(crate) fn credit(info: &AccountInfo, amount: u64) -> Result<()> {
     let mut lamports = info.try_borrow_mut_lamports()?;
     **lamports = (**lamports)
         .checked_add(amount)
@@ -69,6 +69,7 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
     // Checks 3, 6, 7 (check 4 is the Payment seeds, check 5 is `init`).
     {
         let r = &ctx.accounts.reservation;
+        require!(r.delegate.is_none(), PatError::ReservationIsDelegated);
         intent.check_binding(&reservation_key, r)?; // payer == owner, reservation key
         intent.validate_window(r)?; // version, cluster, windows, ledger claim
         // An intent cannot predate the reservation it spends from. This blocks a stale
@@ -101,6 +102,7 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
         p.settled_at = now;
         p.settled_slot = clock.slot;
         p.sequence = intent.sequence;
+        p.rail = PaymentRail::Qr;
         p.bump = ctx.bumps.payment;
     }
 
@@ -146,6 +148,7 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
         settled_slot: clock.slot,
         committed_total: r.committed,
         payments_settled: r.payments_settled,
+        rail: PaymentRail::Qr,
     });
 
     Ok(())

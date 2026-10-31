@@ -3,8 +3,8 @@ use anchor_lang::system_program::{transfer, Transfer};
 
 use crate::constants::*;
 use crate::error::PatError;
-use crate::state::*;
 use crate::events::ReservationCreated;
+use crate::state::*;
 
 #[derive(Accounts)]
 #[instruction(reservation_id: u64)]
@@ -24,6 +24,7 @@ pub struct Reserve<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// QR/PWA rail: no delegate.
 pub fn handle_reserve(
     ctx: Context<Reserve>,
     reservation_id: u64,
@@ -31,6 +32,34 @@ pub fn handle_reserve(
     per_payment_cap: u64,
     expires_at: i64,
     max_payments: u32,
+) -> Result<()> {
+    create_reservation(ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, None)
+}
+
+/// USSD rail: the delegate (gateway keeper key) may settle via settle_delegated.
+pub fn handle_reserve_delegated(
+    ctx: Context<Reserve>,
+    reservation_id: u64,
+    capacity: u64,
+    per_payment_cap: u64,
+    expires_at: i64,
+    max_payments: u32,
+    delegate: Pubkey,
+) -> Result<()> {
+    Reservation::validate_delegate(&delegate, &ctx.accounts.owner.key())?;
+    create_reservation(
+        ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, Some(delegate),
+    )
+}
+
+fn create_reservation(
+    ctx: Context<Reserve>,
+    reservation_id: u64,
+    capacity: u64,
+    per_payment_cap: u64,
+    expires_at: i64,
+    max_payments: u32,
+    delegate: Option<Pubkey>,
 ) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
 
@@ -44,7 +73,6 @@ pub fn handle_reserve(
         .checked_add(rent_reserve)
         .ok_or(error!(PatError::Overflow))?;
 
-    // Write state first (the borrow of `r` ends before the CPI below).
     {
         let r = &mut ctx.accounts.reservation;
         r.owner = ctx.accounts.owner.key();
@@ -57,10 +85,10 @@ pub fn handle_reserve(
         r.created_at = now;
         r.expires_at = expires_at;
         r.settle_deadline = settle_deadline;
+        r.delegate = delegate;
         r.bump = ctx.bumps.reservation;
     }
 
-    // Lock funds: owner -> reservation account (the escrow itself).
     transfer(
         CpiContext::new(
             ctx.accounts.system_program.key(),
@@ -72,7 +100,6 @@ pub fn handle_reserve(
         deposit,
     )?;
 
-    // Lamport invariant (section 3.4), equality expected at creation.
     let required = rent
         .minimum_balance(Reservation::SPACE)
         .checked_add(capacity)
@@ -94,6 +121,7 @@ pub fn handle_reserve(
         created_at: now,
         expires_at,
         settle_deadline,
+        delegate,
     });
 
     Ok(())
