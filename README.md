@@ -11,8 +11,8 @@ PAT is a self-custodial payment protocol on Solana for temporary connectivity lo
 | Program ID (devnet) | `HopC7DPpeyiPiq2Nqyy9WDCRBKduNu3PoqyaN6ACZUhh` |
 | Stack | Solana, Rust, Anchor, ed25519 precompile, TypeScript |
 | Client | React PWA (in progress) |
-| Author | [Hilda Enyioko](https://github.com/Hilda-Enyioko |
-| Contributor | [Chukwu Pascal] (https://github.com/not-a-vibe-coder)
+| Author | [Hilda Enyioko](https://github.com/Hilda-Enyioko) |
+| Contributor | [Chukwu Pascal](https://github.com/not-a-vibe-coder)  |
 
 ---
 
