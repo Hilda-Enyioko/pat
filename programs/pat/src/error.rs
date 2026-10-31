@@ -50,4 +50,22 @@ pub enum PatError {
     // --Withdraw Errors
     #[msg("Only the reservation owner can withdraw")]
     NotReservationOwner,
+
+    // -- Delegated rail
+    #[msg("Invalid delegate: must not be the owner or the default key")]
+    InvalidDelegate,
+    #[msg("Reservation is a delegated (USSD) reservation; use settle_delegated")]
+    ReservationIsDelegated,
+    #[msg("Reservation has no delegate; use settle")]
+    ReservationNotDelegated,
+    #[msg("Signer is not the reservation's delegate")]
+    NotDelegate,
+    #[msg("Reservation has expired for delegated payments")]
+    ReservationExpired,
+
+    // -- Merchant registry
+    #[msg("Signer is not the config admin")]
+    NotAdmin,
+    #[msg("Merchant code must be greater than zero")]
+    InvalidMerchantCode,
 }

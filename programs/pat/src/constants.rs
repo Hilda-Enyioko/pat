@@ -25,3 +25,6 @@ pub const SETTLE_GRACE_SECS: i64 = 30 * 60;
 
 // Prototype guard: bounds the rent_reserve a single reservation can demand.
 pub const MAX_PAYMENTS_PER_RESERVATION: u32 = 1_000;
+
+pub const CONFIG_SEED: &[u8] = b"config";
+pub const MERCHANT_SEED: &[u8] = b"merchant";
