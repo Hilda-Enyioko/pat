@@ -68,4 +68,11 @@ pub enum PatError {
     NotAdmin,
     #[msg("Merchant code must be greater than zero")]
     InvalidMerchantCode,
+
+    #[msg("Mint does not match the reservation's mint")]
+    MintMismatch,
+    #[msg("Token reservations must be withdrawn with withdraw_token")]
+    TokenReservation,
+    #[msg("Token vault invariant violated")]
+    TokenInvariantBroken,
 }

@@ -24,7 +24,6 @@ pub struct Reserve<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// QR/PWA rail: no delegate.
 pub fn handle_reserve(
     ctx: Context<Reserve>,
     reservation_id: u64,
@@ -32,34 +31,6 @@ pub fn handle_reserve(
     per_payment_cap: u64,
     expires_at: i64,
     max_payments: u32,
-) -> Result<()> {
-    create_reservation(ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, None)
-}
-
-/// USSD rail: the delegate (gateway keeper key) may settle via settle_delegated.
-pub fn handle_reserve_delegated(
-    ctx: Context<Reserve>,
-    reservation_id: u64,
-    capacity: u64,
-    per_payment_cap: u64,
-    expires_at: i64,
-    max_payments: u32,
-    delegate: Pubkey,
-) -> Result<()> {
-    Reservation::validate_delegate(&delegate, &ctx.accounts.owner.key())?;
-    create_reservation(
-        ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, Some(delegate),
-    )
-}
-
-fn create_reservation(
-    ctx: Context<Reserve>,
-    reservation_id: u64,
-    capacity: u64,
-    per_payment_cap: u64,
-    expires_at: i64,
-    max_payments: u32,
-    delegate: Option<Pubkey>,
 ) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
 
@@ -85,7 +56,8 @@ fn create_reservation(
         r.created_at = now;
         r.expires_at = expires_at;
         r.settle_deadline = settle_deadline;
-        r.delegate = delegate;
+        r.delegate = None;
+        r.mint = None;
         r.bump = ctx.bumps.reservation;
     }
 
@@ -121,7 +93,8 @@ fn create_reservation(
         created_at: now,
         expires_at,
         settle_deadline,
-        delegate,
+        delegate: None,
+        mint: None,
     });
 
     Ok(())

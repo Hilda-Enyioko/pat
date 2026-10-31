@@ -14,6 +14,7 @@ pub struct ReservationCreated {
     pub expires_at: i64,
     pub settle_deadline: i64,
     pub delegate: Option<Pubkey>,
+    pub mint: Option<Pubkey>,
 }
 
 #[event]
@@ -32,6 +33,7 @@ pub struct PaymentSettled {
     pub committed_total: u64,
     pub payments_settled: u32,
     pub rail: PaymentRail,
+    pub mint: Option<Pubkey>,
 }
 
 #[event]
@@ -53,4 +55,18 @@ pub struct MerchantRegistered {
     pub code: u32,
     pub payout: Pubkey,
     pub admin: Pubkey,
+}
+
+#[event]
+pub struct TokenReservationWithdrawn {
+    pub reservation: Pubkey,
+    pub owner: Pubkey,
+    pub mint: Pubkey,
+    pub reservation_id: u64,
+    pub capacity: u64,
+    pub committed: u64,
+    pub payments_settled: u32,
+    pub refunded_tokens: u64,
+    pub refunded_lamports: u64,
+    pub withdrawn_at: i64,
 }

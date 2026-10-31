@@ -103,6 +103,7 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
         p.settled_slot = clock.slot;
         p.sequence = intent.sequence;
         p.rail = PaymentRail::Qr;
+        p.mint = None;
         p.bump = ctx.bumps.payment;
     }
 
@@ -149,6 +150,7 @@ pub fn handle_settle(ctx: Context<Settle>, intent: PaymentIntent) -> Result<()> 
         committed_total: r.committed,
         payments_settled: r.payments_settled,
         rail: PaymentRail::Qr,
+        mint: None,
     });
 
     Ok(())

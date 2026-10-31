@@ -31,6 +31,7 @@ pub struct Withdraw<'info> {
 pub fn handle_withdraw(ctx: Context<Withdraw>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let r = &ctx.accounts.reservation;
+    require!(r.mint.is_none(), PatError::TokenReservation);
 
     // Funds stay locked until strictly after settle_deadline. There is no early close,
     // so an offline merchant always has the full grace window to reconnect and settle.

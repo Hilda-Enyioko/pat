@@ -45,8 +45,8 @@ pub mod pat {
         instructions::withdraw::handle_withdraw(ctx)
     }
 
-        pub fn reserve_delegated(
-        ctx: Context<Reserve>,
+    pub fn reserve_delegated(
+        ctx: Context<ReserveDelegated>,
         reservation_id: u64,
         capacity: u64,
         per_payment_cap: u64,
@@ -54,9 +54,13 @@ pub mod pat {
         max_payments: u32,
         delegate: Pubkey,
     ) -> Result<()> {
-        instructions::reserve::handle_reserve_delegated(
+        instructions::reserve_delegated::handle_reserve_delegated(
             ctx, reservation_id, capacity, per_payment_cap, expires_at, max_payments, delegate,
         )
+    }
+
+    pub fn withdraw_token(ctx: Context<WithdrawToken>) -> Result<()> {
+        instructions::withdraw_token::handle_withdraw_token(ctx)
     }
 
     pub fn init_config(ctx: Context<InitConfig>) -> Result<()> {

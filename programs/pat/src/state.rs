@@ -34,6 +34,7 @@ pub struct Reservation {
     pub expires_at: i64,       // 8   end of the offline spending window
     pub settle_deadline: i64,  // 8   expires_at + grace: settle cutoff and earliest withdraw
     pub delegate: Option<Pubkey>, // 33  Some = USSD-rail reservation; only this key may settle_delegated
+    pub mint: Option<Pubkey>,
     pub bump: u8,              // 1
 }
 // INIT_SPACE = 101, account size = 8 + 101 = 109
@@ -160,6 +161,7 @@ pub struct Payment {
     pub settled_slot: u64,      // 8
     pub sequence: u32,          // 4   from the intent; enables future equivocation proofs
     pub rail: PaymentRail,      // 1
+    pub mint: Option<Pubkey>,
     pub bump: u8,               // 1
 }
 // INIT_SPACE = 166, account size = 8 + 166 = 174
@@ -270,6 +272,7 @@ mod tests {
             expires_at: 1_000 + 24 * 60 * 60,
             settle_deadline: 1_000 + 24 * 60 * 60 + SETTLE_GRACE_SECS,
             delegate: None,
+            mint: None,
             bump: 255,
         }
     }
@@ -290,12 +293,12 @@ mod tests {
         }
     }
 
-        #[test]
+    #[test]
     fn account_sizes_are_pinned() {
-        assert_eq!(Reservation::INIT_SPACE, 134);
-        assert_eq!(Reservation::SPACE, 142);
-        assert_eq!(Payment::INIT_SPACE, 167);
-        assert_eq!(Payment::SPACE, 175);
+        assert_eq!(Reservation::INIT_SPACE, 167);
+        assert_eq!(Reservation::SPACE, 175);
+        assert_eq!(Payment::INIT_SPACE, 200);
+        assert_eq!(Payment::SPACE, 208);
         assert_eq!(Config::SPACE, 41);
         assert_eq!(Merchant::SPACE, 45);
     }

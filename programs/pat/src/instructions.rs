@@ -15,3 +15,9 @@ pub use register_merchant::*;
 
 pub mod settle_delegated;
 pub use settle_delegated::*;
+
+pub mod reserve_delegated;
+pub use reserve_delegated::*;
+
+pub mod withdraw_token;
+pub use withdraw_token::*;
