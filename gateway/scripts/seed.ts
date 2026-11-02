@@ -53,7 +53,7 @@ async function main() {
     prog.programId)[0];
   const vault = getAssociatedTokenAddressSync(mint, reservation, true);
 
-  await prog.methods
+  const sig = await prog.methods
     .reserveDelegated(
       id, new BN((100n * unit).toString()), new BN((25n * unit).toString()),
       new BN(Math.floor(Date.now() / 1000) + 86_400), 20, config.keeper.publicKey)
@@ -61,7 +61,10 @@ async function main() {
       owner: owner.publicKey, reservation, mint, ownerTokenAccount: ownerAta.address, vault,
       tokenProgram: TOKEN_PROGRAM_ID, associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
-    }).rpc();
+    }).rpc({ commitment: "confirmed" });
+
+  const latest = await connection.getLatestBlockhash("confirmed");
+  await connection.confirmTransaction({ signature: sig, ...latest }, "confirmed");
 
   const res = await fetch(`http://localhost:${config.port}/enroll`, {
     method: "POST",

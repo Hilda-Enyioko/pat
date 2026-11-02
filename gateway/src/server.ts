@@ -36,8 +36,18 @@ app.post("/enroll", async (req, res) => {
 
   const key = new PublicKey(reservation);
   const r = await readReservation(key);
-  if (!r?.mint || !r.delegate?.equals(config.keeper.publicKey))
+
+  if (!r?.mint || r.delegate?.toBase58() !== config.keeper.publicKey.toBase58()) {
+    console.error("Reservation validation failed:", {
+      reservation: key.toBase58(),
+      fetchedMint: r?.mint?.toBase58(),
+      fetchedDelegate: r?.delegate?.toBase58(),
+      expectedKeeper: config.keeper.publicKey.toBase58(),
+      rIsNull: r === null,
+    });
     return res.status(400).json({ error: "not a delegated token reservation for this gateway" });
+  }
+
   if (r.expiresAt * 1000 < Date.now())
     return res.status(400).json({ error: "reservation expired" });
 

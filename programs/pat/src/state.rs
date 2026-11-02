@@ -13,13 +13,17 @@ pub enum ReservationPhase {
     Releasable, // now > settle_deadline
 }
 
-/// The bounded offline spending allowance. Also the escrow: it holds the lamports itself.
+/// The bounded spending allowance and its escrow.
 /// PDA: ["reservation", owner, reservation_id.to_le_bytes()]
 ///
-/// Lamport invariant (checked by the instruction after every settle):
-///   account.lamports >= rent_exempt_min(Reservation)
-///                       + (capacity - committed)
-///                       + rent_reserve
+/// Two kinds, told apart by `mint`:
+///  - QR/PWA (`mint == None`): native SOL, held in this account itself.
+///      account.lamports >= rent_exempt_min(Reservation) + (capacity - committed) + rent_reserve
+///  - USSD (`mint == Some`, `delegate == Some`): SPL tokens. Capacity sits in the vault
+///    (the reservation PDA's associated token account); this account holds only
+///      account.lamports >= rent_exempt_min(Reservation) + rent_reserve
+///      vault.amount     >= capacity - committed
+/// `capacity`, `committed` and `per_payment_cap` are lamports or token base units accordingly.
 #[account]
 #[derive(InitSpace)]
 pub struct Reservation {

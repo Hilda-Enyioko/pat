@@ -25,16 +25,16 @@ export const paymentPda = (reservation: PublicKey, id: Buffer) =>
     [Buffer.from("payment"), reservation.toBuffer(), id], program.programId)[0];
 
 export async function readReservation(key: PublicKey) {
-  const r = await program.account.reservation.fetchNullable(key);
+  const r = await program.account.reservation.fetchNullable(key, "confirmed");
   if (!r) return null;
   return {
-    owner: r.owner as PublicKey,
+    owner: new PublicKey(r.owner),
     capacity: BigInt(r.capacity.toString()),
     committed: BigInt(r.committed.toString()),
     perPaymentCap: BigInt(r.perPaymentCap.toString()),
     expiresAt: r.expiresAt.toNumber() as number,
-    delegate: r.delegate as PublicKey | null,
-    mint: r.mint as PublicKey | null,
+    delegate: r.delegate ? new PublicKey(r.delegate) : null,
+    mint: r.mint ? new PublicKey(r.mint) : null,
   };
 }
 
