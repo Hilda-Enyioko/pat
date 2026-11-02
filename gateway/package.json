@@ -1,0 +1,13 @@
+{
+  "name": "pat-gateway",
+  "private": true,
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "sim": "tsx src/cli-sim.ts",
+    "seed": "tsx scripts/seed.ts",
+    "db": "psql \"$DATABASE_URL\" -f sql/schema.sql"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6"
+  }
+}
