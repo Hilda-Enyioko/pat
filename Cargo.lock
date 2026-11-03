@@ -2098,6 +2098,7 @@ dependencies = [
  "anchor-spl",
  "base64 0.22.1",
  "litesvm",
+ "solana-account",
  "solana-address 2.9.0",
  "solana-instruction 3.5.1",
  "solana-instructions-sysvar",
