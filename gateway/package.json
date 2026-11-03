@@ -2,10 +2,14 @@
   "name": "pat-gateway",
   "private": true,
   "scripts": {
+    "start": "tsx src/index.ts",
     "dev": "tsx src/server.ts",
     "sim": "tsx src/cli-sim.ts",
     "seed": "tsx scripts/seed.ts",
     "db": "psql \"$DATABASE_URL\" -f sql/schema.sql"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^26.6.6"
