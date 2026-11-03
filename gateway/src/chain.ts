@@ -86,7 +86,8 @@ export type MappedError = {
 };
 
 export function mapError(e: any): MappedError {
-  const raw = `${e?.message ?? e}\n${(e?.logs ?? []).join("\n")}`;
+  const logs = [...(e?.logs ?? []), ...(e?.transactionLogs ?? [])].join("\n");
+  const raw = `${e?.message ?? e}\n${logs}`;
   const code = /Error Code: (\w+)/.exec(raw)?.[1];
   const base = { raw, alreadySettled: false, retriable: false };
   if (/already in use/.test(raw)) return { ...base, alreadySettled: true, userMessage: "" };
@@ -96,6 +97,11 @@ export function mapError(e: any): MappedError {
     case "ReservationExpired": return { ...base, userMessage: "Your reservation has expired." };
     case "RentReserveExhausted": return { ...base, userMessage: "Payment count limit reached for this reservation." };
     case "AccountNotInitialized": return { ...base, userMessage: "Unknown merchant." };
+    case "MerchantMismatch": return { ...base, userMessage: "Merchant payout details changed. Contact support." };
+    case "ZeroAmount": return { ...base, userMessage: "Amount must be greater than zero." };
+    case "NotDelegate":
+    case "ReservationNotDelegated":
+      return { ...base, userMessage: "This reservation is not enabled for USSD. Contact support." };
     case undefined: break;
     default: return { ...base, userMessage: "Payment could not be completed. Contact support." };
   }

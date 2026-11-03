@@ -31,7 +31,7 @@ async function markSettled(job: Job, signature: string | null, shown: string) {
     `PAT: paid ${shown} to merchant ${job.merchant_code}. Ref ${signature?.slice(0, 8) ?? "n/a"}`);
 }
 
-async function process(job: Job) {
+async function processJob(job: Job) {
   const reservation = new PublicKey(job.reservation);
   const mint = new PublicKey(job.mint);
   const amount = BigInt(job.amount);
@@ -64,13 +64,14 @@ async function process(job: Job) {
 export function startKeeper() {
   let stop = false;
   (async () => {
-    // Anything left 'sending' by a crash is safe to retry: the Payment PDA blocks double-settle.
+    // Safe only while a single keeper instance runs: the Payment PDA blocks double-settle,
+    // but a second instance would have its in-flight jobs reset by this line.
     await q("update payments set status='pending' where status='sending'");
     while (!stop) {
       try {
         const job = await claim();
         if (!job) { await sleep(1000); continue; }
-        await process(job);
+        await processJob(job);
       } catch (e) {
         console.error("keeper loop error", e);
         await sleep(3000);
