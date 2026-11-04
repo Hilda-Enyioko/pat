@@ -1,0 +1,1833 @@
+{
+  "address": "FZZBN6jwVzWMKR67rta8MewDZPqG8mRHP5igK6qwN8fT",
+  "metadata": {
+    "name": "pat",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "init_config",
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_merchant",
+      "discriminator": [
+        238,
+        245,
+        77,
+        132,
+        161,
+        88,
+        216,
+        248
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "merchant_entry",
+          "docs": [
+            "`init` means a code can be registered once and never overwritten."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  114,
+                  99,
+                  104,
+                  97,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "code"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "code",
+          "type": "u32"
+        },
+        {
+          "name": "payout",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "reserve",
+      "discriminator": [
+        92,
+        99,
+        244,
+        209,
+        28,
+        65,
+        213,
+        157
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "reservation",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "reservation_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "reservation_id",
+          "type": "u64"
+        },
+        {
+          "name": "capacity",
+          "type": "u64"
+        },
+        {
+          "name": "per_payment_cap",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        },
+        {
+          "name": "max_payments",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "reserve_delegated",
+      "discriminator": [
+        21,
+        203,
+        199,
+        159,
+        183,
+        254,
+        231,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "reservation",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "arg",
+                "path": "reservation_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Escrow: the reservation PDA's associated token account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "reservation"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "reservation_id",
+          "type": "u64"
+        },
+        {
+          "name": "capacity",
+          "type": "u64"
+        },
+        {
+          "name": "per_payment_cap",
+          "type": "u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "i64"
+        },
+        {
+          "name": "max_payments",
+          "type": "u32"
+        },
+        {
+          "name": "delegate",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "settle",
+      "discriminator": [
+        175,
+        42,
+        185,
+        87,
+        144,
+        131,
+        102,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "settler",
+          "docs": [
+            "Anyone (merchant or relayer). Fronts the Payment rent, reimbursed from rent_reserve."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "reservation",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation.owner",
+                "account": "Reservation"
+              },
+              {
+                "kind": "account",
+                "path": "reservation.reservation_id",
+                "account": "Reservation"
+              }
+            ]
+          }
+        },
+        {
+          "name": "merchant",
+          "docs": [
+            "Funds can only ever go to the merchant named in the signed intent."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payment",
+          "docs": [
+            "Existence of this PDA == CONFIRMED, and the replay guard:",
+            "a second settle with the same payment_id fails at `init`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  121,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation"
+              },
+              {
+                "kind": "arg",
+                "path": "intent.payment_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "instructions_sysvar",
+          "docs": [
+            "could pass a forged account that pretends to contain a valid ed25519 instruction."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "intent",
+          "type": {
+            "defined": {
+              "name": "PaymentIntent"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "settle_delegated",
+      "discriminator": [
+        63,
+        175,
+        211,
+        83,
+        100,
+        39,
+        42,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "delegate",
+          "docs": [
+            "The reservation's delegate (keeper key). Fronts Payment rent, reimbursed from rent_reserve."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "reservation",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation.owner",
+                "account": "Reservation"
+              },
+              {
+                "kind": "account",
+                "path": "reservation.reservation_id",
+                "account": "Reservation"
+              }
+            ]
+          }
+        },
+        {
+          "name": "merchant_entry",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  114,
+                  99,
+                  104,
+                  97,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "merchant_entry.code",
+                "account": "Merchant"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "Must be the mint this reservation was funded with. A SOL (QR) reservation has",
+            "`mint == None`, so it can never be settled through this instruction."
+          ]
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Escrow: the reservation PDA's associated token account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "reservation"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "merchant_token_account",
+          "docs": [
+            "Tokens can only go to a token account owned by the registered payout address."
+          ],
+          "writable": true
+        },
+        {
+          "name": "payment",
+          "docs": [
+            "Same replay guard as `settle`: a second settle with this payment_id fails at `init`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  97,
+                  121,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation"
+              },
+              {
+                "kind": "arg",
+                "path": "payment_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "payment_id",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Must be the reservation owner. Receives everything left in the account."
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "reservation"
+          ]
+        },
+        {
+          "name": "reservation",
+          "docs": [
+            "`close = owner` runs only if the handler returns Ok. It zeroes the data,",
+            "assigns the account to the system program and sends ALL lamports to `owner`:",
+            "unused capacity + unused rent_reserve + the account's own rent."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation.owner",
+                "account": "Reservation"
+              },
+              {
+                "kind": "account",
+                "path": "reservation.reservation_id",
+                "account": "Reservation"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw_token",
+      "discriminator": [
+        136,
+        235,
+        181,
+        5,
+        101,
+        109,
+        57,
+        81
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "reservation"
+          ]
+        },
+        {
+          "name": "reservation",
+          "docs": [
+            "`close = owner` sends the reservation's lamports (rent + unused rent_reserve) to the owner."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  101,
+                  114,
+                  118,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "reservation.owner",
+                "account": "Reservation"
+              },
+              {
+                "kind": "account",
+                "path": "reservation.reservation_id",
+                "account": "Reservation"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "reservation"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "owner_token_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Merchant",
+      "discriminator": [
+        71,
+        235,
+        30,
+        40,
+        231,
+        21,
+        32,
+        64
+      ]
+    },
+    {
+      "name": "Payment",
+      "discriminator": [
+        227,
+        231,
+        51,
+        26,
+        244,
+        88,
+        4,
+        148
+      ]
+    },
+    {
+      "name": "Reservation",
+      "discriminator": [
+        188,
+        235,
+        0,
+        111,
+        208,
+        253,
+        247,
+        212
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "MerchantRegistered",
+      "discriminator": [
+        202,
+        61,
+        140,
+        95,
+        139,
+        239,
+        17,
+        83
+      ]
+    },
+    {
+      "name": "PaymentSettled",
+      "discriminator": [
+        158,
+        182,
+        152,
+        76,
+        105,
+        23,
+        232,
+        135
+      ]
+    },
+    {
+      "name": "ReservationCreated",
+      "discriminator": [
+        26,
+        199,
+        159,
+        99,
+        111,
+        34,
+        211,
+        176
+      ]
+    },
+    {
+      "name": "ReservationWithdrawn",
+      "discriminator": [
+        3,
+        152,
+        247,
+        243,
+        171,
+        7,
+        236,
+        159
+      ]
+    },
+    {
+      "name": "TokenReservationWithdrawn",
+      "discriminator": [
+        126,
+        156,
+        73,
+        252,
+        3,
+        249,
+        167,
+        229
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidSignature",
+      "msg": "Invalid or missing ed25519 signature instruction"
+    },
+    {
+      "code": 6001,
+      "name": "PayerMismatch",
+      "msg": "Signer is not the reservation owner"
+    },
+    {
+      "code": 6002,
+      "name": "ReservationMismatch",
+      "msg": "Intent does not reference this reservation"
+    },
+    {
+      "code": 6003,
+      "name": "WrongCluster",
+      "msg": "Intent is for a different cluster"
+    },
+    {
+      "code": 6004,
+      "name": "UnsupportedVersion",
+      "msg": "Unsupported intent version"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidIntentWindow",
+      "msg": "Intent expiry is invalid or outlives the reservation"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidLedgerClaim",
+      "msg": "Intent's ledger claim is inconsistent with the reservation"
+    },
+    {
+      "code": 6007,
+      "name": "SettleWindowClosed",
+      "msg": "Settlement window has closed"
+    },
+    {
+      "code": 6008,
+      "name": "ExceedsPerPaymentCap",
+      "msg": "Amount exceeds per-payment cap"
+    },
+    {
+      "code": 6009,
+      "name": "InsufficientCapacity",
+      "msg": "Insufficient remaining reservation capacity"
+    },
+    {
+      "code": 6010,
+      "name": "RentReserveExhausted",
+      "msg": "Rent reserve exhausted"
+    },
+    {
+      "code": 6011,
+      "name": "ZeroAmount",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6012,
+      "name": "WithdrawTooEarly",
+      "msg": "Cannot withdraw before settle deadline"
+    },
+    {
+      "code": 6013,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidCapacity",
+      "msg": "Capacity must be greater than zero"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidPerPaymentCap",
+      "msg": "Per-payment cap must be > 0 and <= capacity"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidReservationWindow",
+      "msg": "Reservation expiry must be in the future"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidMaxPayments",
+      "msg": "max_payments must be between 1 and the program limit"
+    },
+    {
+      "code": 6018,
+      "name": "LamportInvariantBroken",
+      "msg": "Reservation lamport invariant violated"
+    },
+    {
+      "code": 6019,
+      "name": "MerchantMismatch",
+      "msg": "Merchant account does not match the intent"
+    },
+    {
+      "code": 6020,
+      "name": "NotReservationOwner",
+      "msg": "Only the reservation owner can withdraw"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidDelegate",
+      "msg": "Invalid delegate: must not be the owner or the default key"
+    },
+    {
+      "code": 6022,
+      "name": "ReservationIsDelegated",
+      "msg": "Reservation is a delegated (USSD) reservation; use settle_delegated"
+    },
+    {
+      "code": 6023,
+      "name": "ReservationNotDelegated",
+      "msg": "Reservation has no delegate; use settle"
+    },
+    {
+      "code": 6024,
+      "name": "NotDelegate",
+      "msg": "Signer is not the reservation's delegate"
+    },
+    {
+      "code": 6025,
+      "name": "ReservationExpired",
+      "msg": "Reservation has expired for delegated payments"
+    },
+    {
+      "code": 6026,
+      "name": "NotAdmin",
+      "msg": "Signer is not the config admin"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidMerchantCode",
+      "msg": "Merchant code must be greater than zero"
+    },
+    {
+      "code": 6028,
+      "name": "MintMismatch",
+      "msg": "Mint does not match the reservation's mint"
+    },
+    {
+      "code": 6029,
+      "name": "TokenReservation",
+      "msg": "Token reservations must be withdrawn with withdraw_token"
+    },
+    {
+      "code": 6030,
+      "name": "TokenInvariantBroken",
+      "msg": "Token vault invariant violated"
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "docs": [
+        "Program-wide settings. PDA: [\"config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Merchant",
+      "docs": [
+        "USSD merchant registry entry. PDA: [\"merchant\", code.to_le_bytes()]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "code",
+            "type": "u32"
+          },
+          {
+            "name": "payout",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MerchantRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "code",
+            "type": "u32"
+          },
+          {
+            "name": "payout",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Payment",
+      "docs": [
+        "On-chain record of one settled payment. Existence = CONFIRMED, and it is the replay guard.",
+        "Outlives the Reservation so a merchant can still prove payment after the payer withdraws.",
+        "PDA: [\"payment\", reservation, payment_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "payment_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "merchant",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "PaymentStatus"
+              }
+            }
+          },
+          {
+            "name": "intent_created_at",
+            "type": "i64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "settled_slot",
+            "type": "u64"
+          },
+          {
+            "name": "sequence",
+            "type": "u32"
+          },
+          {
+            "name": "rail",
+            "type": {
+              "defined": {
+                "name": "PaymentRail"
+              }
+            }
+          },
+          {
+            "name": "mint",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentIntent",
+      "docs": [
+        "The signed body carried in the QR. The customer signs `signing_bytes()` (ed25519).",
+        "The 64-byte signature travels beside it off-chain, not inside it.",
+        "",
+        "FIELD ORDER IS PART OF THE WIRE FORMAT. Reordering breaks every existing signature",
+        "and the TypeScript encoder."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "cluster",
+            "type": "u8"
+          },
+          {
+            "name": "payment_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "merchant",
+            "type": "pubkey"
+          },
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "sequence",
+            "type": "u32"
+          },
+          {
+            "name": "committed_after",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentRail",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Qr"
+          },
+          {
+            "name": "Ussd"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "merchant",
+            "type": "pubkey"
+          },
+          {
+            "name": "settler",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "sequence",
+            "type": "u32"
+          },
+          {
+            "name": "intent_created_at",
+            "type": "i64"
+          },
+          {
+            "name": "settled_at",
+            "type": "i64"
+          },
+          {
+            "name": "settled_slot",
+            "type": "u64"
+          },
+          {
+            "name": "committed_total",
+            "type": "u64"
+          },
+          {
+            "name": "payments_settled",
+            "type": "u32"
+          },
+          {
+            "name": "rail",
+            "type": {
+              "defined": {
+                "name": "PaymentRail"
+              }
+            }
+          },
+          {
+            "name": "mint",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Settled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Reservation",
+      "docs": [
+        "The bounded spending allowance and its escrow.",
+        "PDA: [\"reservation\", owner, reservation_id.to_le_bytes()]",
+        "",
+        "Two kinds, told apart by `mint`:",
+        "- QR/PWA (`mint == None`): native SOL, held in this account itself.",
+        "account.lamports >= rent_exempt_min(Reservation) + (capacity - committed) + rent_reserve",
+        "- USSD (`mint == Some`, `delegate == Some`): SPL tokens. Capacity sits in the vault",
+        "(the reservation PDA's associated token account); this account holds only",
+        "account.lamports >= rent_exempt_min(Reservation) + rent_reserve",
+        "vault.amount     >= capacity - committed",
+        "`capacity`, `committed` and `per_payment_cap` are lamports or token base units accordingly."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "reservation_id",
+            "type": "u64"
+          },
+          {
+            "name": "capacity",
+            "type": "u64"
+          },
+          {
+            "name": "committed",
+            "type": "u64"
+          },
+          {
+            "name": "rent_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "per_payment_cap",
+            "type": "u64"
+          },
+          {
+            "name": "payments_settled",
+            "type": "u32"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "settle_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "delegate",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "mint",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReservationCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "reservation_id",
+            "type": "u64"
+          },
+          {
+            "name": "capacity",
+            "type": "u64"
+          },
+          {
+            "name": "per_payment_cap",
+            "type": "u64"
+          },
+          {
+            "name": "rent_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "max_payments",
+            "type": "u32"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "settle_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "delegate",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "mint",
+            "type": {
+              "option": "pubkey"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReservationWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "reservation_id",
+            "type": "u64"
+          },
+          {
+            "name": "capacity",
+            "type": "u64"
+          },
+          {
+            "name": "committed",
+            "type": "u64"
+          },
+          {
+            "name": "payments_settled",
+            "type": "u32"
+          },
+          {
+            "name": "unused_capacity",
+            "type": "u64"
+          },
+          {
+            "name": "unused_rent_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "refunded_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TokenReservationWithdrawn",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "reservation",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "reservation_id",
+            "type": "u64"
+          },
+          {
+            "name": "capacity",
+            "type": "u64"
+          },
+          {
+            "name": "committed",
+            "type": "u64"
+          },
+          {
+            "name": "payments_settled",
+            "type": "u32"
+          },
+          {
+            "name": "refunded_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "refunded_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn_at",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "COUNTER_SEED",
+      "type": "bytes",
+      "value": "[99, 111, 117, 110, 116, 101, 114]"
+    },
+    {
+      "name": "HELLO_WORLD_LAMPORTS",
+      "type": "u64",
+      "value": "1"
+    },
+    {
+      "name": "MAX_COUNT",
+      "type": "u64",
+      "value": "10"
+    }
+  ]
+}
