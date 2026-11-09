@@ -6,6 +6,9 @@ import * as PricingCard from "@/components/ui/pricing-card";
 import { cn } from "@/lib/utils";
 import {
   availableOffline,
+  isUssd,
+  patchLedger,
+  unspentOnChain,
   isLocked,
   isReleasable,
   nowAdjusted,
@@ -18,8 +21,12 @@ import {
   type Phase,
 } from "../lib/ledger";
 import { chainNow } from "../lib/pat";
-import { withdrawReservation } from "../lib/withdraw";
-import { lamportsToSol, shortKey } from "../lib/format";
+import { refundPreview, withdrawReservation } from "../lib/withdraw";
+import { formatUnits, lamportsToSol, shortKey } from "../lib/format";
+import { tokenMeta } from "../lib/tokens";
+import { enrollStatus } from "../lib/gateway";
+import { USSD_ENABLED } from "../config";
+import { EnrollPhone } from "./EnrollPhone";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
 import { PaymentQrDialog, type ShownPayment } from "./site/PaymentQr";
@@ -68,7 +75,8 @@ export function LedgerPanel({
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [stage, setStage] = useState<WithdrawStage>("idle");
-  const [refund, setRefund] = useState<bigint>(0n);
+  const [refund, setRefund] = useState<{ lamports: bigint; tokens: bigint | null }>({ lamports: 0n, tokens: null });
+  const [enrollOpen, setEnrollOpen] = useState(false);
   const [unsettled, setUnsettled] = useState(0);
   const [, setTick] = useState(0);
   const [shown, setShown] = useState<ShownPayment | null>(null);
@@ -81,12 +89,22 @@ export function LedgerPanel({
   const silentFailureShown = useRef(false);
 
   const now = nowAdjusted(ledger);
-  const phaseLabel = ledger.withdrawn ? "Withdrawn" : phaseOf(ledger, now);
+  const ussd = isUssd(ledger);
+  const meta = ledger.mint ? tokenMeta(ledger.mint) : null;
+  const decimals = ledger.decimals ?? meta?.decimals;
+  const symbol = ledger.symbol ?? meta?.symbol ?? "tokens";
+  /** Amount in this reservation's unit: SOL on the QR rail, the token on USSD. */
+  const fmt = (v: bigint) =>
+    !ussd ? `${lamportsToSol(v)} SOL` : decimals === undefined ? `${v} base units` : formatUnits(v, decimals, symbol);
+  const fmtNumber = (v: bigint) => (!ussd ? lamportsToSol(v) : decimals === undefined ? v.toString() : formatUnits(v, decimals));
+  const phase = ledger.withdrawn ? "Withdrawn" : phaseOf(ledger, now);
+  const phaseLabel = ledger.legacy ? "Legacy" : ussd && phase === "Expiring" ? "USSD stopped" : phase;
   const locked = isLocked(ledger);
   const releasable = isReleasable(ledger, now);
   const hasSigned = ledger.history?.some((h) => h.status === "SIGNED") ?? false;
   const isOwner = publicKey?.toBase58() === ledger.owner;
-  const unspentOnChain = BigInt(ledger.capacity) - BigInt(ledger.committedOnChain);
+  const unspent = unspentOnChain(ledger);
+  const canEnroll = ussd && USSD_ENABLED && !ledger.withdrawn && !ledger.legacy && now < ledger.expiresAt && isOwner;
 
   const refresh = useCallback(
     async (silent = false) => {
@@ -118,6 +136,24 @@ export function LedgerPanel({
     return () => window.clearInterval(id);
   }, [online, hasSigned, ledger.withdrawn, ledger.reservation, refresh]);
 
+  // Enrollment lives in the gateway, not on chain: ask it whether a phone is linked.
+  useEffect(() => {
+    if (!online || !ussd || !USSD_ENABLED || ledger.withdrawn || ledger.legacy) return;
+    let live = true;
+    enrollStatus(ledger.reservation)
+      .then(async (s) => {
+        if (!live) return;
+        if (s.enrolled !== Boolean(ledger.enrolled) || s.phoneMasked !== ledger.phoneMasked) {
+          await patchLedger(ledger.reservation, { enrolled: s.enrolled, phoneMasked: s.phoneMasked });
+          onChangeRef.current();
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [online, ussd, ledger.reservation, ledger.withdrawn, ledger.legacy, ledger.enrolled, ledger.phoneMasked]);
+
   useEffect(() => {
     if (ledger.withdrawn || releasable) return;
     const id = window.setInterval(() => setTick((t) => t + 1), 30000);
@@ -140,8 +176,7 @@ export function LedgerPanel({
         notify.info("Already withdrawn", "This reservation was closed and refunded earlier.");
         return;
       }
-      const lamports = await connection.getBalance(new PublicKey(ledger.reservation), "confirmed");
-      setRefund(BigInt(lamports));
+      setRefund(await refundPreview(connection, new PublicKey(ledger.reservation), ledger.mint ? new PublicKey(ledger.mint) : null));
       setUnsettled(fresh.history.filter((h) => h.status === "EXPIRED" || h.status === "SIGNED").length);
       setStage("confirm");
     } catch (e) {
@@ -161,10 +196,12 @@ export function LedgerPanel({
         connection,
         publicKey,
         new PublicKey(ledger.reservation),
-        sendTransaction
+        sendTransaction,
+        ledger.mint ? new PublicKey(ledger.mint) : null,
       );
       await reconcileWithChain(connection, ledgerRef.current).catch(() => undefined);
-      notify.success("Withdrawn", `${lamportsToSol(refund)} SOL returned to your wallet. Tx ${signature.slice(0, 8)}…`);
+      const back = refund.tokens !== null ? `${fmt(refund.tokens)} and ${lamportsToSol(refund.lamports)} SOL` : `${lamportsToSol(refund.lamports)} SOL`;
+      notify.success("Withdrawn", `${back} returned to your wallet. Tx ${signature.slice(0, 8)}…`);
       setStage("idle");
       onWithdrawn();
     } catch (e) {
@@ -178,38 +215,55 @@ export function LedgerPanel({
 
   const historyList = [...(ledger.history ?? [])].sort((a, b) => b.createdAt - a.createdAt);
 
-  const balance = ledger.withdrawn ? 0n : locked ? unspentOnChain : availableOffline(ledger);
-  const balanceLabel = locked ? "SOL unspent on-chain (signing disabled here)" : "SOL available offline";
+  const balance = ledger.withdrawn ? 0n : locked || ussd || ledger.legacy ? unspent : availableOffline(ledger);
+  const balanceLabel = ussd
+    ? `${symbol} available over USSD`
+    : ledger.legacy
+      ? "SOL on an older PAT program"
+      : locked
+        ? "SOL unspent on-chain (signing disabled here)"
+        : "SOL available offline";
 
-  const metrics = [
-    ["Capacity", `${lamportsToSol(BigInt(ledger.capacity))} SOL`],
-    ["Committed on-chain", `${lamportsToSol(BigInt(ledger.committedOnChain))} SOL`],
-    ["Pending", `${lamportsToSol(pendingTotal(ledger))} SOL (${ledger.pending.length})`],
-    ["Per-payment cap", `${lamportsToSol(BigInt(ledger.perPaymentCap))} SOL`],
-  ];
+  const metrics = ussd
+    ? [
+        ["Reserved", fmt(BigInt(ledger.capacity))],
+        ["Paid so far", fmt(BigInt(ledger.committedOnChain))],
+        ["Per-payment cap", fmt(BigInt(ledger.perPaymentCap))],
+        ["Phone", ledger.enrolled ? ledger.phoneMasked ?? "Enrolled" : "Not enrolled"],
+        ["Gateway key", ledger.delegate ? shortKey(ledger.delegate) : "—"],
+        ["Token", ledger.mint ? `${symbol} · ${shortKey(ledger.mint)}` : "—"],
+      ]
+    : [
+        ["Capacity", fmt(BigInt(ledger.capacity))],
+        ["Committed on-chain", fmt(BigInt(ledger.committedOnChain))],
+        ["Pending", `${fmt(pendingTotal(ledger))} (${ledger.pending.length})`],
+        ["Per-payment cap", fmt(BigInt(ledger.perPaymentCap))],
+      ];
 
   return (
     <PricingCard.Card className="max-w-none rounded-[22px] bg-white p-1.5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)]">
-      <PricingCard.Header className={cn("grainy mb-2 rounded-[18px] border-0 p-5", phaseTile[phaseLabel])} glassEffect={false}>
+      <PricingCard.Header className={cn("grainy mb-2 rounded-[18px] border-0 p-5", ledger.legacy ? "bg-stone" : phaseTile[phase])} glassEffect={false}>
         <PricingCard.Plan className="mb-10 gap-3">
           <PricingCard.PlanName className="min-w-0 text-ink">
             <Vault />
             <span className="truncate">
-              Reservation <span className="font-mono">{shortKey(ledger.reservation)}</span>
+              {ussd ? "USSD" : "QR"} reservation <span className="font-mono">{shortKey(ledger.reservation)}</span>
             </span>
           </PricingCard.PlanName>
           <PricingCard.Badge className="shrink-0 border-ink/25 bg-white/55 font-semibold text-ink">{phaseLabel}</PricingCard.Badge>
         </PricingCard.Plan>
         <PricingCard.Price className="flex-wrap gap-x-3">
           <PricingCard.MainPrice className="font-display text-[clamp(52px,6vw,76px)] font-black leading-[0.85] tracking-tighter font-stretch-85%]">
-            {lamportsToSol(balance)}
+            {fmtNumber(balance)}
           </PricingCard.MainPrice>
           <PricingCard.Period className="text-ink/75">{balanceLabel}</PricingCard.Period>
         </PricingCard.Price>
         <PricingCard.Description className="text-ink/70">
           {ledger.withdrawn
             ? "Closed and refunded to your wallet."
-            : `Spend until ${when(ledger.expiresAt)} · settle by ${when(ledger.settleDeadline)}`}
+            : ussd
+              ? `Pay by USSD until ${when(ledger.expiresAt)} · withdraw after ${when(ledger.settleDeadline)}`
+              : `Spend until ${when(ledger.expiresAt)} · settle by ${when(ledger.settleDeadline)}`}
         </PricingCard.Description>
       </PricingCard.Header>
 
@@ -220,6 +274,33 @@ export function LedgerPanel({
             signing is disabled for this reservation here. Reserve on this device to spend offline, or withdraw once the
             settle window closes.
           </StatusNote>
+        )}
+
+        {ledger.legacy && (
+          <StatusNote tone="warning">
+            This reservation was made with an older PAT program. It is read-only here: it can&rsquo;t sign payments, and
+            this app can&rsquo;t withdraw it.
+          </StatusNote>
+        )}
+
+        {ussd && phase === "Expiring" && !ledger.withdrawn && (
+          <StatusNote>USSD payments have stopped. Withdraw opens 30 minutes after the window ended.</StatusNote>
+        )}
+
+        {canEnroll && !ledger.enrolled && (
+          <div className="space-y-4 rounded-[18px] bg-yellow/40 p-4">
+            <p className="m-0 text-sm font-semibold">No phone is enrolled yet, so USSD payments can&rsquo;t use this reservation.</p>
+            {enrollOpen ? (
+              <EnrollPhone
+                reservation={ledger.reservation}
+                symbol={symbol}
+                online={online}
+                onEnrolled={() => onChangeRef.current()}
+              />
+            ) : (
+              <PillButton size="sm" text="Enroll phone" onClick={() => setEnrollOpen(true)} disabled={!online} />
+            )}
+          </div>
         )}
 
         <dl className="m-0 grid grid-cols-2 gap-2">
@@ -235,11 +316,15 @@ export function LedgerPanel({
           <div className="grainy on-dark space-y-4 rounded-[18px] bg-card-dark p-5 text-white">
             <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-white/60">Withdraw returns</p>
             <p className="m-0 font-display text-5xl font-black leading-[0.85] tracking-tighter font-stretch-85%">
-              {lamportsToSol(refund)} <span className="text-xl tracking-normal">SOL</span>
+              {refund.tokens !== null ? fmt(refund.tokens) : <>{lamportsToSol(refund.lamports)} <span className="text-xl tracking-normal">SOL</span></>}
             </p>
+            {refund.tokens !== null && (
+              <p className="m-0 font-mono text-sm text-white/80">+ {lamportsToSol(refund.lamports)} SOL rent</p>
+            )}
             <p className="m-0 text-sm leading-relaxed text-white/70">
-              Closes this reservation and returns unspent capacity, unused receipt rent and the reservation account rent
-              to your wallet.
+              {ussd
+                ? "Closes this reservation and its vault. Unspent tokens go back to your token account; unused receipt rent and account rent go back to your wallet."
+                : "Closes this reservation and returns unspent capacity, unused receipt rent and the reservation account rent to your wallet."}
             </p>
             {unsettled > 0 && (
               <p className="m-0 text-sm text-yellow">
@@ -261,7 +346,7 @@ export function LedgerPanel({
 
         <div className="flex flex-wrap items-center gap-3">
           <PillButton size="sm" tone="light" text="Refresh from chain" onClick={() => void refresh()} disabled={!online} />
-          {!ledger.withdrawn && releasable && isOwner && stage === "idle" && (
+          {!ledger.withdrawn && !ledger.legacy && releasable && isOwner && stage === "idle" && (
             <PillButton
               size="sm"
               text="Withdraw"
@@ -271,7 +356,7 @@ export function LedgerPanel({
             />
           )}
           {stage === "checking" && <PillButton size="sm" tone="light" text="Checking…" disabled />}
-          {!ledger.withdrawn && !releasable && (
+          {!ledger.withdrawn && !ledger.legacy && !releasable && (
             <span className="text-sm text-muted-foreground">Withdraw opens in {formatDuration(releasesIn(ledger, now))}</span>
           )}
           {!online && <span className="text-sm text-muted-foreground">Offline: showing the local ledger</span>}
@@ -280,14 +365,14 @@ export function LedgerPanel({
         <PricingCard.Separator>Transaction history</PricingCard.Separator>
 
         {historyList.length === 0 ? (
-          <p className="m-0 text-sm text-muted-foreground">No local transactions yet.</p>
+          <p className="m-0 text-sm text-muted-foreground">{ussd ? "No USSD payments yet." : "No local transactions yet."}</p>
         ) : (
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {historyList.map((h) => (
               <li key={h.paymentId} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 rounded-[14px] border border-ink/8 px-4 py-3">
-                <span className="font-mono text-sm font-semibold">{lamportsToSol(BigInt(h.amount))} SOL</span>
+                <span className="font-mono text-sm font-semibold">{fmt(BigInt(h.amount))}</span>
                 <span className={cn("justify-self-end rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide", statusPill[h.status])}>
-                  {h.status}
+                  {ussd && h.status === "SETTLED" ? "PAID BY USSD" : h.status}
                 </span>
                 <span className="font-mono text-xs text-muted-foreground">
                   {new Date(h.createdAt * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · to{" "}
@@ -296,7 +381,7 @@ export function LedgerPanel({
                 {(h.failureReason || h.status === "EXPIRED") && (
                   <span className="justify-self-end text-xs text-red">{h.failureReason ?? "settle window closed"}</span>
                 )}
-                {h.status === "SIGNED" && h.payload && (
+                {!ussd && h.status === "SIGNED" && h.payload && (
                   <button
                     type="button"
                     onClick={() =>

@@ -3,6 +3,8 @@ import { PublicKey, type Connection, type ConfirmedSignatureInfo } from "@solana
 import { PROGRAM_ID } from "../config";
 import { PAYMENT_SEED, PAYMENT_SPACE, RESERVATION_SPACE } from "./pat";
 import { bytesToHex, hexToBytes } from "./intent";
+import { fetchMintInfo } from "./spl";
+import { placeholderSymbol, rememberToken, tokenMeta } from "./tokens";
 
 export interface ChainReservation {
   reservation: string;
@@ -22,7 +24,12 @@ export interface ChainReservation {
   withdrawSig?: string;
   withdrawnAt?: number;
   refunded?: string;
+  /** Present on USSD (token) reservations. */
+  mint?: string;
+  delegate?: string;
 }
+
+export type PaymentRailName = "qr" | "ussd";
 
 export interface ChainPayment {
   paymentId: string;
@@ -35,6 +42,8 @@ export interface ChainPayment {
   settledAt: number;
   settledSlot: number;
   signature?: string;
+  rail?: PaymentRailName;
+  mint?: string;
 }
 
 interface EventBase {
@@ -56,6 +65,8 @@ export type ChainEvent =
       createdAt: number;
       expiresAt: number;
       settleDeadline: number;
+      delegate?: string;
+      mint?: string;
     })
   | (EventBase & {
       kind: "settled";
@@ -68,6 +79,8 @@ export type ChainEvent =
       intentCreatedAt: number;
       settledAt: number;
       settledSlot: number;
+      rail?: PaymentRailName;
+      mint?: string;
     })
   | (EventBase & {
       kind: "withdrawn";
@@ -79,6 +92,8 @@ export type ChainEvent =
       paymentsSettled: number;
       refunded: string;
       withdrawnAt: number;
+      /** Token withdraws refund tokens (in `refunded`) plus lamports. */
+      mint?: string;
     });
 
 export type TimelineKind = "RESERVED" | "WITHDRAWN" | "SENT" | "RECEIVED";
@@ -91,6 +106,9 @@ export interface TimelineItem {
   counterparty?: string;
   reservation: string;
   signature?: string;
+  /** Set when the amount is in token base units rather than lamports. */
+  mint?: string;
+  rail?: PaymentRailName;
 }
 
 export interface WalletHistory {
@@ -166,9 +184,20 @@ class Reader {
     this.offset += 1;
     return x;
   }
+
+  /** borsh Option<Pubkey>: 1 tag byte, then 32 bytes only when Some. */
+  optKey() {
+    return this.u8() === 1 ? this.key() : undefined;
+  }
+
+  get remaining() {
+    return this.bytes.length - this.offset;
+  }
 }
 
-function decodeReservation(pubkey: PublicKey, data: Uint8Array): ChainReservation {
+const railName = (b: number): PaymentRailName => (b === 1 ? "ussd" : "qr");
+
+export function decodeReservation(pubkey: PublicKey, data: Uint8Array): ChainReservation {
   const r = new Reader(data);
   const owner = r.key();
   const reservationId = r.u64().toString();
@@ -180,6 +209,8 @@ function decodeReservation(pubkey: PublicKey, data: Uint8Array): ChainReservatio
   const createdAt = Number(r.i64());
   const expiresAt = Number(r.i64());
   const settleDeadline = Number(r.i64());
+  const delegate = r.optKey();
+  const mint = r.optKey();
   return {
     reservation: pubkey.toBase58(),
     owner,
@@ -193,10 +224,12 @@ function decodeReservation(pubkey: PublicKey, data: Uint8Array): ChainReservatio
     expiresAt,
     settleDeadline,
     status: "OPEN",
+    ...(delegate ? { delegate } : {}),
+    ...(mint ? { mint } : {}),
   };
 }
 
-function decodePayment(data: Uint8Array): ChainPayment {
+export function decodePayment(data: Uint8Array): ChainPayment {
   const r = new Reader(data);
   const paymentId = r.hex32();
   const reservation = r.key();
@@ -208,7 +241,9 @@ function decodePayment(data: Uint8Array): ChainPayment {
   const settledAt = Number(r.i64());
   const settledSlot = Number(r.u64());
   const sequence = r.u32();
-  return { paymentId, reservation, payer, merchant, amount, sequence, intentCreatedAt, settledAt, settledSlot };
+  const rail = railName(r.u8());
+  const mint = r.optKey();
+  return { paymentId, reservation, payer, merchant, amount, sequence, intentCreatedAt, settledAt, settledSlot, rail, ...(mint ? { mint } : {}) };
 }
 
 async function fetchOpenReservations(connection: Connection, wallet: string) {
@@ -227,11 +262,11 @@ async function fetchPayments(connection: Connection, offset: number, wallet: str
   return accounts.map((a) => decodePayment(a.account.data));
 }
 
-const EVENT_NAMES = ["ReservationCreated", "PaymentSettled", "ReservationWithdrawn"] as const;
+const EVENT_NAMES = ["ReservationCreated", "PaymentSettled", "ReservationWithdrawn", "TokenReservationWithdrawn"] as const;
 type EventName = (typeof EVENT_NAMES)[number];
 let discriminators: Map<string, EventName> | null = null;
 
-async function eventDiscriminators() {
+export async function eventDiscriminators() {
   if (discriminators) return discriminators;
   const map = new Map<string, EventName>();
   for (const name of EVENT_NAMES) {
@@ -258,9 +293,14 @@ function decodeEvent(name: EventName, buf: Uint8Array, base: EventBase): ChainEv
     const createdAt = Number(r.i64());
     const expiresAt = Number(r.i64());
     const settleDeadline = Number(r.i64());
+    // Older events end here; current ones carry delegate and mint.
+    const delegate = r.remaining > 0 ? r.optKey() : undefined;
+    const mint = r.remaining > 0 ? r.optKey() : undefined;
     return {
       ...base,
       kind: "created",
+      ...(delegate ? { delegate } : {}),
+      ...(mint ? { mint } : {}),
       reservation,
       owner,
       reservationId,
@@ -286,9 +326,19 @@ function decodeEvent(name: EventName, buf: Uint8Array, base: EventBase): ChainEv
     const intentCreatedAt = Number(r.i64());
     const settledAt = Number(r.i64());
     const settledSlot = Number(r.u64());
+    let rail: PaymentRailName | undefined;
+    let mint: string | undefined;
+    if (r.remaining > 0) {
+      r.u64(); // committed_total
+      r.u32(); // payments_settled
+      rail = railName(r.u8());
+      mint = r.optKey();
+    }
     return {
       ...base,
       kind: "settled",
+      ...(rail ? { rail } : {}),
+      ...(mint ? { mint } : {}),
       reservation,
       paymentId,
       payer,
@@ -299,6 +349,20 @@ function decodeEvent(name: EventName, buf: Uint8Array, base: EventBase): ChainEv
       settledAt,
       settledSlot,
     };
+  }
+
+  if (name === "TokenReservationWithdrawn") {
+    const reservation = r.key();
+    const owner = r.key();
+    const mint = r.key();
+    const reservationId = r.u64().toString();
+    const capacity = r.u64().toString();
+    const committed = r.u64().toString();
+    const paymentsSettled = r.u32();
+    const refunded = r.u64().toString();
+    r.u64(); // refunded_lamports
+    const withdrawnAt = Number(r.i64());
+    return { ...base, kind: "withdrawn", reservation, owner, reservationId, capacity, committed, paymentsSettled, refunded, withdrawnAt, mint };
   }
 
   const reservation = r.key();
@@ -329,7 +393,7 @@ const INVOKE_RE = /^Program (\w+) invoke \[\d+\]$/;
 const EXIT_RE = /^Program (\w+) (?:success|failed)/;
 const DATA_PREFIX = "Program data: ";
 
-function eventsFromLogs(
+export function eventsFromLogs(
   logs: string[],
   discs: Map<string, EventName>,
   signature: string,
@@ -438,6 +502,26 @@ async function resolvePaymentSigs(connection: Connection, cache: HistoryCache) {
   }
 }
 
+/** Decimals for every mint this wallet touched, so token amounts can render offline later. */
+async function resolveTokenMeta(connection: Connection, cache: HistoryCache) {
+  const mints = new Set<string>();
+  for (const e of cache.events) if ("mint" in e && e.mint) mints.add(e.mint);
+  for (const r of cache.openReservations) if (r.mint) mints.add(r.mint);
+  for (const p of cache.payments) if (p.mint) mints.add(p.mint);
+  await Promise.all(
+    [...mints]
+      .filter((m) => !tokenMeta(m))
+      .map(async (mint) => {
+        try {
+          const info = await fetchMintInfo(connection, new PublicKey(mint));
+          if (info.ok) rememberToken({ mint, decimals: info.decimals, symbol: placeholderSymbol(mint) });
+        } catch {
+          /* shown in base units until the next sync */
+        }
+      }),
+  );
+}
+
 const eventKey = (e: ChainEvent) => `${e.signature}:${e.ix}`;
 
 export function buildWalletHistory(c: HistoryCache): WalletHistory {
@@ -463,6 +547,8 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
         status: "OPEN",
         maxPayments: e.maxPayments,
         createSig: e.signature,
+        ...(e.mint ? { mint: e.mint } : {}),
+        ...(e.delegate ? { delegate: e.delegate } : {}),
       });
     } else if (e.kind === "withdrawn") {
       const prev = res.get(e.reservation);
@@ -483,6 +569,7 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
         withdrawSig: e.signature,
         withdrawnAt: e.withdrawnAt,
         refunded: e.refunded,
+        ...(e.mint ? { mint: e.mint } : {}),
       });
     }
   }
@@ -520,6 +607,8 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
       intentCreatedAt: e.intentCreatedAt,
       settledAt: e.settledAt,
       settledSlot: e.settledSlot,
+      ...(e.rail ? { rail: e.rail } : {}),
+      ...(e.mint ? { mint: e.mint } : {}),
       ...prev,
       signature: e.signature,
     });
@@ -540,6 +629,7 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
         amount: r.capacity,
         reservation: r.reservation,
         signature: r.createSig,
+        ...(r.mint ? { mint: r.mint, rail: "ussd" as const } : {}),
       });
     }
     if (r.status === "WITHDRAWN") {
@@ -551,6 +641,7 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
         amount: r.refunded ?? unused,
         reservation: r.reservation,
         signature: r.withdrawSig,
+        ...(r.mint ? { mint: r.mint, rail: "ussd" as const } : {}),
       });
     }
   }
@@ -565,6 +656,8 @@ export function buildWalletHistory(c: HistoryCache): WalletHistory {
       counterparty: sent ? p.merchant : p.payer,
       reservation: p.reservation,
       signature: p.signature,
+      ...(p.mint ? { mint: p.mint } : {}),
+      ...(p.rail ? { rail: p.rail } : {}),
     });
   }
 
@@ -608,6 +701,7 @@ async function runSync(connection: Connection, wallet: string): Promise<WalletHi
   };
 
   await resolvePaymentSigs(connection, cache);
+  await resolveTokenMeta(connection, cache);
   await cacheStore.setItem(wallet, cache);
   return buildWalletHistory(cache);
 }

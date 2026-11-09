@@ -3,6 +3,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { chainNow } from "../lib/pat";
 import { loadCachedHistory, syncWalletHistory, type WalletHistory } from "../lib/chainHistory";
 import { mergeChainIntoLedgers } from "../lib/ledger";
+import { tokenMeta } from "../lib/tokens";
 
 export function useWalletHistory(online: boolean, onLedgersChanged: () => void) {
   const { connection } = useConnection();
@@ -38,7 +39,7 @@ export function useWalletHistory(online: boolean, onLedgersChanged: () => void) 
     try {
       const fresh = await syncWalletHistory(connection, wallet);
       const clockOffset = (await chainNow(connection)) - Math.floor(Date.now() / 1000);
-      await mergeChainIntoLedgers(wallet, fresh, { clockOffset });
+      await mergeChainIntoLedgers(wallet, fresh, { clockOffset, tokens: tokenMeta });
       if (id !== run.current) return;
       setHistory(fresh);
       changed.current();

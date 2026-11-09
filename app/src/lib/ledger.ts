@@ -2,7 +2,7 @@ import localforage from "localforage";
 import type { Connection } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import type { ReservationAccount } from "./pat";
-import { fetchReservation, PAYMENT_SEED } from "./pat";
+import { fetchReservation, ForeignProgramError, PAYMENT_SEED } from "./pat";
 import { PROGRAM_ID } from "../config";
 import type { WalletHistory, ChainPayment } from "./chainHistory";
 
@@ -104,7 +104,24 @@ export interface OfflineLedger {
   clockOffset?: number;
   restoredFromChain?: boolean;
   withdrawn?: boolean;
+  /** undefined => "qr" (records written before the USSD rail existed). */
+  rail?: Rail;
+  /** Program that owns the reservation; a mismatch marks the ledger legacy. */
+  programId?: string;
+  /** Owned by an older PAT deployment: read-only, hidden by default. */
+  legacy?: boolean;
+  mint?: string;
+  decimals?: number;
+  symbol?: string;
+  delegate?: string;
+  /** From the gateway's /enroll/status, display only. */
+  phoneMasked?: string;
+  enrolled?: boolean;
 }
+
+export type Rail = "qr" | "ussd";
+export const railOf = (l: OfflineLedger): Rail => l.rail ?? "qr";
+export const isUssd = (l: OfflineLedger) => railOf(l) === "ussd";
 
 export type LedgerErrorCode =
   | "NO_LEDGER"
@@ -112,7 +129,8 @@ export type LedgerErrorCode =
   | "RESERVATION_EXPIRED"
   | "ZERO_AMOUNT"
   | "OVER_PER_PAYMENT_CAP"
-  | "INSUFFICIENT_OFFLINE_BALANCE";
+  | "INSUFFICIENT_OFFLINE_BALANCE"
+  | "WRONG_RAIL";
 
 export class LedgerError extends Error {
   code: LedgerErrorCode;
@@ -133,7 +151,8 @@ export const pendingTotal = (l: OfflineLedger): bigint =>
   l.pending.reduce((sum, p) => sum + BigInt(p.amount), 0n);
 
 export const availableOffline = (l: OfflineLedger): bigint => {
-  if (l.withdrawn || l.restoredFromChain) return 0n;
+  // USSD reservations have no offline signing: the gateway settles directly.
+  if (l.withdrawn || l.restoredFromChain || l.legacy || isUssd(l)) return 0n;
   const v = BigInt(l.capacity) - BigInt(l.committedOnChain) - pendingTotal(l);
   return v > 0n ? v : 0n;
 };
@@ -146,10 +165,19 @@ export const phaseOf = (l: OfflineLedger, now: number): Phase =>
 export const nowAdjusted = (l: OfflineLedger): number =>
   Math.floor(Date.now() / 1000) + (l.clockOffset ?? 0);
 
-export const isLocked = (l: OfflineLedger): boolean => Boolean(l.restoredFromChain) && !l.withdrawn;
+/** On-chain capacity - committed, from the last sync. The USSD headline. */
+export const unspentOnChain = (l: OfflineLedger): bigint => {
+  if (l.withdrawn) return 0n;
+  const v = BigInt(l.capacity) - BigInt(l.committedOnChain);
+  return v > 0n ? v : 0n;
+};
+
+/** "Restored from chain, signing disabled" only means something on the QR rail. */
+export const isLocked = (l: OfflineLedger): boolean =>
+  Boolean(l.restoredFromChain) && !l.withdrawn && !l.legacy && !isUssd(l);
 
 export const isSignable = (l: OfflineLedger): boolean =>
-  !l.withdrawn && !l.restoredFromChain && nowAdjusted(l) < l.expiresAt;
+  !l.withdrawn && !l.restoredFromChain && !l.legacy && !isUssd(l) && nowAdjusted(l) < l.expiresAt;
 
 export const isReleasable = (l: OfflineLedger, now = nowAdjusted(l)): boolean =>
   !l.withdrawn && now > l.settleDeadline;
@@ -176,6 +204,7 @@ function migrate(l: OfflineLedger): OfflineLedger {
     }));
   return {
     ...l,
+    rail: l.rail ?? "qr",
     pending: l.pending ?? [],
     history,
     nextSequence: l.nextSequence ?? Math.max(0, ...history.map((h) => h.sequence + 1)),
@@ -195,7 +224,7 @@ export const deleteLedger = (reservation: string) => store.removeItem(reservatio
 export function initLedgerIfAbsent(
   reservation: string,
   acct: ReservationAccount,
-  metadata?: Pick<OfflineLedger, "maxPayments" | "clockOffset">
+  metadata?: Partial<Pick<OfflineLedger, "maxPayments" | "clockOffset" | "decimals" | "symbol">>
 ): Promise<OfflineLedger> {
   return withLock(async () => {
     const existing = await store.getItem<OfflineLedger>(reservation);
@@ -219,6 +248,10 @@ export function initLedgerIfAbsent(
       history: [],
       nextSequence: 0,
       syncedAt: Math.floor(Date.now() / 1000),
+      programId: PROGRAM_ID.toBase58(),
+      rail: acct.mint ? "ussd" : "qr",
+      ...(acct.mint ? { mint: acct.mint.toBase58() } : {}),
+      ...(acct.delegate ? { delegate: acct.delegate.toBase58() } : {}),
       ...metadata,
     };
     await store.setItem(reservation, ledger);
@@ -246,6 +279,9 @@ export function debitForPayment(
     const raw = await store.getItem<OfflineLedger>(reservation);
     if (!raw) throw new LedgerError("NO_LEDGER");
     const l = migrate(raw);
+    if (isUssd(l) || l.legacy) {
+      throw new LedgerError("WRONG_RAIL", "This reservation is for phone (USSD) payments and cannot sign QR payments.");
+    }
     if (l.restoredFromChain) {
       throw new LedgerError(
         "LEDGER_LOCKED",
@@ -375,15 +411,29 @@ export async function reconcileWithChain(connection: Connection, ledger: Offline
     .history.filter((h) => h.status === "SIGNED")
     .map((h) => h.paymentId);
 
-  const [reservation, settled] = await Promise.all([
-    fetchReservation(connection, resKey),
-    findSettled(connection, resKey, signedIds),
-  ]);
+  let reservation: ReservationAccount | null;
+  let settled: Set<string>;
+  try {
+    [reservation, settled] = await Promise.all([
+      fetchReservation(connection, resKey),
+      findSettled(connection, resKey, signedIds),
+    ]);
+  } catch (e) {
+    if (!(e instanceof ForeignProgramError)) throw e;
+    // Created under an older PAT program: keep it for reference, never sign against it.
+    return patchLedger(ledger.reservation, { legacy: true });
+  }
 
   return withLock(async () => {
     const latest = await store.getItem<OfflineLedger>(ledger.reservation);
     if (!latest) throw new LedgerError("NO_LEDGER");
     const m = migrate(latest);
+    m.programId ??= PROGRAM_ID.toBase58();
+    if (reservation) {
+      m.rail = reservation.mint ? "ussd" : "qr";
+      if (reservation.mint) m.mint = reservation.mint.toBase58();
+      if (reservation.delegate) m.delegate = reservation.delegate.toBase58();
+    }
     if (reservation) m.committedOnChain = reservation.committed.toString();
     m.withdrawn = !reservation;
     m.syncedAt = Math.floor(Date.now() / 1000);
@@ -393,10 +443,21 @@ export async function reconcileWithChain(connection: Connection, ledger: Offline
   });
 }
 
+/** Shallow update of display fields (enrollment status, token symbol, legacy flag). */
+export function patchLedger(reservation: string, patch: Partial<OfflineLedger>) {
+  return withLock(async () => {
+    const raw = await store.getItem<OfflineLedger>(reservation);
+    if (!raw) throw new LedgerError("NO_LEDGER");
+    const m = { ...migrate(raw), ...patch };
+    await store.setItem(reservation, m);
+    return m;
+  });
+}
+
 export function mergeChainIntoLedgers(
   wallet: string,
   h: WalletHistory,
-  opts: { clockOffset?: number } = {}
+  opts: { clockOffset?: number; tokens?: (mint: string) => { mint: string; decimals: number; symbol: string } | null } = {}
 ): Promise<void> {
   return withLock(async () => {
     const local = new Map<string, OfflineLedger>();
@@ -434,9 +495,24 @@ export function mergeChainIntoLedgers(
           syncedAt: now,
           maxPayments: r.maxPayments,
           clockOffset: opts.clockOffset ?? 0,
-          restoredFromChain: true,
+          programId: PROGRAM_ID.toBase58(),
+          rail: r.mint ? "ussd" : "qr",
+          // Only the QR rail signs on-device, so only it needs the "unknown local
+          // payments" lock. USSD history comes entirely from chain.
+          restoredFromChain: !r.mint,
         };
       }
+      if (r.mint) {
+        l.rail = "ussd";
+        l.mint = r.mint;
+        l.restoredFromChain = false;
+        const meta = opts.tokens?.(r.mint);
+        if (meta) {
+          l.decimals ??= meta.decimals;
+          l.symbol ??= meta.symbol;
+        }
+      }
+      if (r.delegate) l.delegate = r.delegate;
 
       const known = new Set(l.history.map((x) => x.paymentId));
 

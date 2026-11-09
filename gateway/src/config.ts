@@ -34,4 +34,19 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   maxPinAttempts: 3,
   lockMinutes: 30,
+  cluster: process.env.CLUSTER ?? "devnet",
+  /** Tokens offered in the PWA, "MINT:SYMBOL,MINT:SYMBOL". Decimals are read from chain. */
+  mints: (process.env.MINTS ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => {
+      const [mint, symbol = "USDC"] = x.split(":");
+      return { mint: mint.trim(), symbol: symbol.trim() };
+    }),
+  /** Browser origins allowed to call /meta and /enroll/*. "*" allows any. */
+  corsOrigins: (process.env.CORS_ORIGINS ?? "*").split(",").map((x) => x.trim()).filter(Boolean),
+  otpMinutes: 10,
+  otpMaxAttempts: 5,
+  challengesPerPhonePer10Min: 3,
 };

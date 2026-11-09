@@ -30,7 +30,7 @@ import {
   serializeIntentSigningBytes,
   type SignedIntentPayload,
 } from "../lib/intent";
-import { buildSettleIx, mapProgramError } from "../lib/pat";
+import { buildSettleIx, fetchReservation, mapProgramError } from "../lib/pat";
 import { lamportsToSol, solToLamports, shortKey } from "../lib/format";
 import { Field, inputClass } from "./site/Field";
 import { PageHeading } from "./site/PageHeading";
@@ -44,6 +44,7 @@ const LEDGER_MESSAGES: Partial<Record<string, string>> = {
   ZERO_AMOUNT: "Amount must be greater than zero.",
   OVER_PER_PAYMENT_CAP: "Amount exceeds the per-payment cap.",
   INSUFFICIENT_OFFLINE_BALANCE: "Amount exceeds your available offline balance.",
+  WRONG_RAIL: "This reservation is for phone (USSD) payments and cannot sign QR payments.",
 };
 
 const when = (unix: number) =>
@@ -432,6 +433,15 @@ export function MerchantSettlement() {
       if (balance === 0) {
         throw new Error(
           "The connected wallet has 0 SOL. Request an airdrop on Devnet to pay the transaction fee."
+        );
+      }
+
+      // A USSD (delegated) reservation can only be settled by its gateway; a QR
+      // payload naming one would always fail with ReservationIsDelegated.
+      const target = await fetchReservation(connection, parsed.reservation).catch(() => null);
+      if (target?.delegate) {
+        throw new Error(
+          "This payment names a phone (USSD) reservation. Those pay through the USSD gateway and can't be settled from a QR code. Don't accept it."
         );
       }
 
