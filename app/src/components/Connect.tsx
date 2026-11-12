@@ -24,10 +24,12 @@ export function Connect({
   onConnect,
   onChooseWallet,
   usesMobileWallet,
+  onGuide,
 }: {
   onConnect: () => void;
   onChooseWallet: () => void;
   usesMobileWallet: boolean;
+  onGuide?: () => void;
 }) {
   const { wallets, wallet, connecting } = useWallet();
   const installed = wallets.some((wallet) => wallet.readyState === "Installed") || Boolean(window.solflare?.isSolflare);
@@ -51,6 +53,14 @@ export function Connect({
         </h1>
         <p className="mt-5 mb-8 max-w-lg text-[17px] leading-relaxed text-ink/80">
           PAT never takes custody of your funds. Connect the wallet you&rsquo;ll use to reserve an offline allowance.
+          {onGuide && (
+            <>
+              {" "}
+              <button type="button" onClick={onGuide} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline underline-offset-4">
+                QR or USSD? Read the guide.
+              </button>
+            </>
+          )}
         </p>
 
         <PricingCard.Card className="max-w-xl rounded-[22px] bg-white shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)]">

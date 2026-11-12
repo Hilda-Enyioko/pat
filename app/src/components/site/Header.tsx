@@ -215,7 +215,7 @@ export function Header({
             </button>
           ))}
         </nav>
-        <div className="pmeta ni" style={{ "--i": 5 } as CSSProperties}>
+        <div className="pmeta ni" style={{ "--i": APP_VIEWS.length + 1 } as CSSProperties}>
           <button
             type="button"
             onClick={() => {

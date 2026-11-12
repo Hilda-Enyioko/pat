@@ -2,13 +2,17 @@ import { Buffer } from "buffer";
 import { Connection, Ed25519Program, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import type { SignedIntentPayload } from "./intent";
 import { PROGRAM_ID } from "../config";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, createAtaIdempotentIx, getAta } from "./spl";
 
 const te = new TextEncoder();
 
 export const RESERVATION_SEED = te.encode("reservation");
 export const PAYMENT_SEED = te.encode("payment");
-export const RESERVATION_SPACE = 109;
-export const PAYMENT_SPACE = 174;
+// Must match Reservation::SPACE and Payment::SPACE in programs/pat/src/state.rs.
+// Option<Pubkey> fields reserve 33 bytes each, but borsh writes None as 1 byte, so
+// fields after an Option move: decode sequentially, never with fixed offsets past it.
+export const RESERVATION_SPACE = 175;
+export const PAYMENT_SPACE = 208;
 
 // ---------- byte helpers ----------
 export const concatBytes = (parts: Uint8Array[]): Uint8Array => {
@@ -99,6 +103,16 @@ const PROGRAM_ERRORS: Record<string, string> = {
   InvalidReservationWindow: "The spending window must end in the future.",
   InvalidMaxPayments: "Max payments is outside the allowed range.",
   AccountNotInitialized: "The reservation no longer exists. It may have been withdrawn.",
+  InvalidDelegate: "The gateway key cannot be the owner or empty.",
+  MintMismatch: "The token does not match this reservation.",
+  TokenReservation: "This is a token reservation. Use the token withdraw.",
+  ReservationIsDelegated: "This reservation is for phone (USSD) payments and cannot be used for QR payments.",
+  ReservationNotDelegated: "This reservation is not enabled for USSD.",
+  NotDelegate: "This reservation is not enabled for USSD.",
+  ReservationExpired: "The spending window has ended.",
+  TokenInvariantBroken: "The vault balance check failed. Please contact support.",
+  NotAdmin: "Only the PAT admin can do this.",
+  InvalidMerchantCode: "Merchant codes must be greater than zero.",
 };
 
 function collectLogs(err: unknown, logs?: string[]): string[] {
@@ -120,11 +134,18 @@ export function mapProgramError(err: unknown, logs?: string[]): string {
   if (lower.includes("already in use") || lower.includes("account already exists")) return "Already settled";
   if (/ed25519sigverify\w* failed/i.test(haystack)) return "The on-chain signature verification failed.";
   if (lower.includes("blockhash not found")) return "The network is busy or the blockhash expired. Try again.";
+  // SPL Token logs "Error: insufficient funds" when a token account is short.
+  if (lower.includes("program log: error: insufficient funds")) {
+    return "Your token account does not hold enough of this token.";
+  }
   if (lower.includes("insufficient funds") || lower.includes("insufficient lamports")) {
     return "The wallet does not have enough SOL to pay for this transaction.";
   }
   if (lower.includes("user rejected") || lower.includes("rejected the request")) {
     return "You rejected the wallet request.";
+  }
+  if (lower.includes("accountnotinitialized") || lower.includes("could not find account") || lower.includes("invalidaccountdata")) {
+    return "A token account is missing. Make sure your wallet holds this token.";
   }
 
   return message || "Settlement failed.";
@@ -175,6 +196,61 @@ export async function buildWithdrawIx(reservation: PublicKey, owner: PublicKey) 
   });
 }
 
+// ---------- USSD rail: reserve_delegated / withdraw_token ----------
+export interface ReserveDelegatedParams extends ReserveParams {
+  mint: PublicKey;
+  delegate: PublicKey;  // the gateway keeper
+}
+
+export async function buildReserveDelegatedIx(p: ReserveDelegatedParams) {
+  const [reservation] = findReservationPda(p.owner, p.reservationId);
+  const ownerTokenAccount = getAta(p.mint, p.owner);
+  const vault = getAta(p.mint, reservation, true);
+  const data = concatBytes([
+    await discriminator("global:reserve_delegated"),
+    u64le(p.reservationId),
+    u64le(p.capacity),
+    u64le(p.perPaymentCap),
+    i64le(p.expiresAt),
+    u32le(p.maxPayments),
+    p.delegate.toBytes(),
+  ]);
+  const ix = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: p.owner, isSigner: true, isWritable: true },
+      { pubkey: reservation, isSigner: false, isWritable: true },
+      { pubkey: p.mint, isSigner: false, isWritable: false },
+      { pubkey: ownerTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: vault, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+  return { ix, reservation, vault, ownerTokenAccount };
+}
+
+/** withdraw_token, preceded by an idempotent ATA create so a closed owner ATA can't block the refund. */
+export async function buildWithdrawTokenIxs(reservation: PublicKey, owner: PublicKey, mint: PublicKey) {
+  const ownerTokenAccount = getAta(mint, owner);
+  const vault = getAta(mint, reservation, true);
+  const ix = new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: reservation, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: vault, isSigner: false, isWritable: true },
+      { pubkey: ownerTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(await discriminator("global:withdraw_token")),
+  });
+  return [createAtaIdempotentIx(owner, ownerTokenAccount, owner, mint), ix];
+}
+
 // ---------- Reservation account ----------
 export interface ReservationAccount {
   owner: PublicKey;
@@ -187,6 +263,10 @@ export interface ReservationAccount {
   createdAt: bigint;
   expiresAt: bigint;
   settleDeadline: bigint;
+  /** Some = USSD rail: only this key may settle_delegated. */
+  delegate: PublicKey | null;
+  /** Some = SPL token reservation (USSD rail). None = SOL (QR rail). */
+  mint: PublicKey | null;
   bump: number;
 }
 
@@ -194,9 +274,11 @@ export function decodeReservation(data: Uint8Array): ReservationAccount {
   if (data.length < RESERVATION_SPACE) throw new Error(`Reservation data too short: ${data.length}`);
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let o = 8; // skip discriminator
-  const owner = new PublicKey(data.subarray(o, o + 32)); o += 32;
+  const key = () => { const k = new PublicKey(data.subarray(o, o + 32)); o += 32; return k; };
   const u64 = () => { const v = dv.getBigUint64(o, true); o += 8; return v; };
   const i64 = () => { const v = dv.getBigInt64(o, true); o += 8; return v; };
+  const optKey = () => { const tag = data[o]; o += 1; return tag === 1 ? key() : null; };
+  const owner = key();
   const reservationId = u64();
   const capacity = u64();
   const committed = u64();
@@ -206,16 +288,26 @@ export function decodeReservation(data: Uint8Array): ReservationAccount {
   const createdAt = i64();
   const expiresAt = i64();
   const settleDeadline = i64();
+  const delegate = optKey();
+  const mint = optKey();
   const bump = dv.getUint8(o);
   return { owner, reservationId, capacity, committed, rentReserve, perPaymentCap,
-           paymentsSettled, createdAt, expiresAt, settleDeadline, bump };
+           paymentsSettled, createdAt, expiresAt, settleDeadline, delegate, mint, bump };
+}
+
+/** The account exists but belongs to another program (an older PAT deployment). */
+export class ForeignProgramError extends Error {
+  constructor() {
+    super("Account is not owned by the PAT program");
+    this.name = "ForeignProgramError";
+  }
 }
 
 /** null = account does not exist (never created, or closed by withdraw). */
 export async function fetchReservation(c: Connection, address: PublicKey): Promise<ReservationAccount | null> {
   const info = await c.getAccountInfo(address, "confirmed");
   if (!info) return null;
-  if (!info.owner.equals(PROGRAM_ID)) throw new Error("Account is not owned by the PAT program");
+  if (!info.owner.equals(PROGRAM_ID)) throw new ForeignProgramError();
   return decodeReservation(info.data);
 }
 

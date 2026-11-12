@@ -7,10 +7,15 @@ import { q } from "./db";
 import { hashPin, validPinFormat } from "./pin";
 import { handleUssd } from "./ussd";
 import { startKeeper } from "./keeper";
+import { mountEnroll } from "./enroll";
+import { useCors } from "./http";
 
 const app = express();
+app.set("trust proxy", 1); // Render terminates TLS in front of us; req.ip must be the client
+useCors(app);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+mountEnroll(app);
 
 // Africa's Talking USSD callback (form-encoded). Reply must be text/plain "CON ..." or "END ...".
 app.post("/ussd", async (req, res) => {

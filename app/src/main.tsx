@@ -6,7 +6,7 @@ import "@fontsource-variable/archivo/standard.css";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource/dm-mono/400.css";
 import "@fontsource/dm-mono/500.css";
-import { registerSW } from "virtual:pwa-register";
+import { setupPwa } from "./lib/pwa";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./index.css";
 import { armIntro, installStage } from "./lib/stage";
@@ -14,7 +14,7 @@ import { armIntro, installStage } from "./lib/stage";
 installStage();
 armIntro();
 
-registerSW({ onOfflineReady: () => window.dispatchEvent(new Event("pat:offline-ready")) });
+setupPwa();
 
 createRoot(
   document.getElementById("root")!

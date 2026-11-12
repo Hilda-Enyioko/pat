@@ -2,7 +2,21 @@ import { History as HistoryIcon } from "lucide-react";
 import * as PricingCard from "@/components/ui/pricing-card";
 import { cn } from "@/lib/utils";
 import type { TimelineKind, WalletHistory as History } from "../lib/chainHistory";
-import { lamportsToSol, shortKey } from "../lib/format";
+import { formatUnits, lamportsToSol, shortKey } from "../lib/format";
+import { tokenMeta } from "../lib/tokens";
+import type { TimelineItem } from "../lib/chainHistory";
+
+function amountOf(i: TimelineItem) {
+  if (!i.mint) return `${lamportsToSol(BigInt(i.amount))} SOL`;
+  const meta = tokenMeta(i.mint);
+  return meta ? formatUnits(BigInt(i.amount), meta.decimals, meta.symbol) : `${i.amount} base units`;
+}
+
+function labelOf(i: TimelineItem) {
+  if (i.rail === "ussd" && i.kind === "SENT") return "Paid by USSD";
+  if (i.rail === "ussd" && i.kind === "RECEIVED") return "Received by USSD";
+  return LABEL[i.kind];
+}
 import { CLUSTER } from "../config";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
@@ -76,7 +90,7 @@ export function WalletHistory({
                 className="grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 rounded-[14px] border border-ink/8 px-4 py-3"
               >
                 <span className={cn("rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide", PILL[i.kind])}>
-                  {LABEL[i.kind]}
+                  {labelOf(i)}
                 </span>
                 <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
                   {i.at ? new Date(i.at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
@@ -84,7 +98,7 @@ export function WalletHistory({
                 </span>
                 <span className="text-right font-mono text-sm font-semibold">
                   {SIGN[i.kind]}
-                  {lamportsToSol(BigInt(i.amount))} SOL
+                  {amountOf(i)}
                 </span>
                 {i.signature && (
                   <a

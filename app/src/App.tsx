@@ -2,7 +2,9 @@ import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Providers } from "./components/Providers";
-import { ReserveForm } from "./components/ReserveForm";
+import { ReservePage } from "./components/ReservePage";
+import { Guide } from "./components/Guide";
+import { InstallPrompt, UpdatePrompt } from "./components/site/PwaPrompts";
 import { LedgerPanel } from "./components/LedgerPanel";
 import { MerchantSettlement, SignPayment } from "./components/PaymentFlows";
 import { Landing } from "./components/Landing";
@@ -14,7 +16,7 @@ import { PillButton } from "./components/site/Pill";
 import { WalletHistory } from "./components/WalletHistory";
 import { isLocked, isSignable, listLedgers, type OfflineLedger } from "./lib/ledger";
 import { useWalletHistory } from "./hooks/useWalletHistory";
-import { validViews, type View } from "./lib/views";
+import { PUBLIC_VIEWS, validViews, type View } from "./lib/views";
 import { useNetwork } from "./hooks/useNetwork";
 import { Notifier } from "./components/site/Notifier";
 import { notify } from "./lib/notify";
@@ -67,16 +69,20 @@ function AppContent() {
     return validViews.includes(candidate) ? candidate : "landing";
   });
   const [ledgers, setLedgers] = useState<OfflineLedger[]>([]);
+  const [showLegacy, setShowLegacy] = useState(false);
 
   // Update browser history via pushState on navigation
-  const setView = useCallback((next: View) => {
+  const setView = useCallback((next: View, hash?: string) => {
     setViewState(next);
     window.scrollTo(0, 0);
     const targetPath = next === "landing" ? "/" : `/${next}`;
-    if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, "", targetPath);
+    const target = hash ? `${targetPath}#${hash}` : targetPath;
+    if (window.location.pathname + window.location.hash !== target) {
+      window.history.pushState(null, "", target);
+      if (hash) window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
   }, []);
+  const openGuide = useCallback((anchor?: string) => setView("guide", anchor), [setView]);
 
   const reload = useCallback(async () => {
     setLedgers(publicKey ? await listLedgers(publicKey.toBase58()) : []);
@@ -101,7 +107,7 @@ function AppContent() {
 
   // Guard: if no wallet is connected and trying to access app paths, route to /connect
   useEffect(() => {
-    if (!publicKey && view !== "landing" && view !== "connect") {
+    if (!publicKey && !PUBLIC_VIEWS.includes(view)) {
       setView("connect");
     }
   }, [publicKey, view, setView]);
@@ -117,8 +123,7 @@ function AppContent() {
   }, [publicKey, view, ready, history, setView]);
 
   // Determine view to render: fall back to "connect" if unauthenticated
-  const guardedView =
-    publicKey || view === "landing" || view === "connect" ? view : "connect";
+  const guardedView = publicKey || PUBLIC_VIEWS.includes(view) ? view : "connect";
 
   // The landing is a viewport-locked composition: no document scroll.
   useEffect(() => {
@@ -156,6 +161,7 @@ function AppContent() {
   const overlays = (
     <>
       <HowItWorks open={howOpen} onClose={() => setHowOpen(false)} onStart={start} />
+      <UpdatePrompt />
     </>
   );
 
@@ -170,8 +176,12 @@ function AppContent() {
 
   let content: ReactNode;
   if (guardedView === "connect") {
-    content = <Connect onConnect={connectWallet} onChooseWallet={chooseWallet} usesMobileWallet={usesMobileWallet} />;
+    content = (
+      <Connect onConnect={connectWallet} onChooseWallet={chooseWallet} usesMobileWallet={usesMobileWallet} onGuide={() => openGuide()} />
+    );
   } else if (guardedView === "ledger") {
+    const legacy = ledgers.filter((l) => l.legacy);
+    const visible = showLegacy ? ledgers : ledgers.filter((l) => !l.legacy);
     content = (
       <main className="page">
         <PageHeading
@@ -180,7 +190,17 @@ function AppContent() {
           lede="Your ledger lives on this device and fails closed when it cannot verify your allowance."
           aside={<PillButton size="lg" text="Reserve funds" onClick={() => setView("reserve")} />}
         />
-        {ledgers.length === 0 ? (
+        <InstallPrompt />
+        {legacy.length > 0 && (
+          <p className="mt-0 mb-4 text-sm text-muted-foreground">
+            {legacy.length} reservation{legacy.length === 1 ? " was" : "s were"} made with an older PAT program and{" "}
+            {legacy.length === 1 ? "is" : "are"} read-only.{" "}
+            <button type="button" onClick={() => setShowLegacy((v) => !v)} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline underline-offset-4">
+              {showLegacy ? "Hide" : "Show"}
+            </button>
+          </p>
+        )}
+        {visible.length === 0 ? (
           syncing ? (
             <section className="grainy flex flex-col items-start gap-4 rounded-[22px] bg-blue p-6 sm:p-10">
               <h2 className="display-h text-[clamp(32px,4.4vw,56px)]">Reading your history…</h2>
@@ -213,7 +233,7 @@ function AppContent() {
           )
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-2">
-            {ledgers.map((ledger) => (
+            {visible.map((ledger) => (
               <LedgerPanel
                 key={ledger.reservation}
                 ledger={ledger}
@@ -233,27 +253,18 @@ function AppContent() {
     );
   } else if (guardedView === "reserve") {
     content = (
-      <main className="page">
-        <PageHeading
-          eyebrow="Step 2 / 3"
-          lines={["Reserve", "offline", "funds."]}
-          lede="Lock a bounded allowance while connected. Unspent funds return after the settle window."
-          aside={
-            <span className="inline-flex items-center gap-2 self-end rounded-full border border-ink/10 bg-white px-4 py-2 text-sm font-semibold">
-              <span aria-hidden="true" className={online ? "size-2 rounded-full bg-[#3fb36b]" : "size-2 rounded-full bg-red"} />
-              {online ? "Online" : "Offline"}
-            </span>
-          }
-        />
-        <ReserveForm
-          onCreated={() => {
-            void reload();
-            void refreshHistory();
-            setView("ledger");
-          }}
-        />
-      </main>
+      <ReservePage
+        online={online}
+        onGuide={openGuide}
+        onCreated={() => {
+          void reload();
+          void refreshHistory();
+          setView("ledger");
+        }}
+      />
     );
+  } else if (guardedView === "guide") {
+    content = <Guide onReserve={() => setView(publicKey ? "reserve" : "connect")} />;
   } else if (guardedView === "sign") {
     const signable = ledgers.filter(isSignable);
     const lockedCount = ledgers.filter(isLocked).length;

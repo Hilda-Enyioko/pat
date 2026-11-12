@@ -96,3 +96,21 @@ PAT never presents an offline payment as blockchain-confirmed before it is.
 ### Merchant registry
 
 Merchants on the USSD rail are identified by a short numeric code that a person can type. An admin registers `code -> payout` once (`init_config`, `register_merchant`). A code can never be overwritten. Funds can only ever go to a token account owned by the registered
+
+
+### Enrolling a phone from the PWA
+
+The browser can't hold the gateway's shared `ENROLL_TOKEN` (anything in a `VITE_*` variable ships in the bundle), so the PWA enrolls by proving control of both the phone and the wallet:
+
+| Endpoint | Request | Response |
+|---|---|---|
+| `GET /meta` | none | `{ keeper, programId, cluster, mints: [{ mint, symbol, decimals }] }` |
+| `POST /enroll/challenge` | `{ phone, reservation }` | `{ challengeId, message, expiresAt, phoneAlreadyEnrolled }`, and an SMS code to the phone |
+| `POST /enroll/confirm` | `{ challengeId, otp, pin, signature }` | `{ ok, phoneMasked }` |
+| `GET /enroll/status/:reservation` | none | `{ enrolled, phoneMasked? }` |
+
+`message` starts with `PAT-ENROLL-v1` and binds the origin, reservation, phone, challenge id and expiry. The wallet signs it with `signMessage`, and the gateway verifies the ed25519 signature against the reservation's on-chain owner. Codes expire after 10 minutes and burn after 5 wrong tries, and each phone gets at most 3 codes per 10 minutes. The PIN is sent only in `/enroll/confirm`. `/enroll` with `x-enroll-token` remains for local testing and the seed script.
+
+Gateway settings for this flow: `MINTS="<mint>:USDC,…"` lists the tokens offered in the PWA (on devnet, mints already used in enrollments are offered when it is empty), and `CORS_ORIGINS` limits which sites may call these routes (default `*`). Run `bun run db` (or apply `gateway/sql/schema.sql`) to create the `enroll_challenges` table.
+
+App settings: `VITE_GATEWAY_URL`, `VITE_USSD_ENABLED=true`, `VITE_USSD_SERVICE_CODE`. `VITE_DEV_ENROLL_TOKEN` switches the PWA to the dev `/enroll` endpoint for local testing; a production build fails while it is set. See `app/.env.example`.

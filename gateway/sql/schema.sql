@@ -28,3 +28,22 @@ create table if not exists payments (
   updated_at timestamptz not null default now()
 );
 create index if not exists payments_status_idx on payments(status);
+
+-- PWA enrollment: SMS OTP + wallet signature over `message`.
+create table if not exists enroll_challenges (
+  id text primary key,
+  phone text not null,
+  reservation text not null,
+  owner text not null,
+  mint text not null,
+  decimals smallint not null,
+  symbol text not null,
+  message text not null,
+  otp_hash text not null,
+  attempts int not null default 0,
+  used boolean not null default false,
+  ip text,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists enroll_challenges_phone_idx on enroll_challenges(phone, created_at);
