@@ -43,6 +43,31 @@ export async function merchantPayout(code: number): Promise<PublicKey | null> {
   return m ? (m.payout as PublicKey) : null;
 }
 
+export const configPda = () =>
+  PublicKey.findProgramAddressSync([Buffer.from("config")], program.programId)[0];
+
+/** Registers code -> payout on-chain. Signed and paid for by the Config admin. */
+export async function registerMerchant(code: number, payout: PublicKey): Promise<string> {
+  const admin = config.admin;
+  if (!admin) throw new Error("ADMIN_KEYPAIR_JSON is not set");
+  const ix = await program.methods
+    .registerMerchant(code, payout)
+    .accountsPartial({
+      admin: admin.publicKey,
+      config: configPda(),
+      merchantEntry: merchantPda(code),
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  return sendAndConfirmTransaction(connection, new Transaction().add(ix), [admin], { commitment: "confirmed" });
+}
+
+/** The admin key stored in the on-chain Config, or null if init_config never ran. */
+export async function configAdmin(): Promise<PublicKey | null> {
+  const c = await program.account.config.fetchNullable(configPda());
+  return c ? (c.admin as PublicKey) : null;
+}
+
 export async function paymentExists(reservation: PublicKey, id: Buffer) {
   return (await connection.getAccountInfo(paymentPda(reservation, id))) !== null;
 }

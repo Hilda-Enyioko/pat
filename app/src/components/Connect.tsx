@@ -52,7 +52,7 @@ export function Connect({
           <span className="block">wallet.</span>
         </h1>
         <p className="mt-5 mb-8 max-w-lg text-[17px] leading-relaxed text-ink/80">
-          PAT never takes custody of your funds. Connect the wallet you&rsquo;ll use to reserve an offline allowance.
+          PAT never takes custody of your funds. Connect the wallet you&rsquo;ll pay or get paid with. Connecting also gives you a merchant code for USSD payments.
           {onGuide && (
             <>
               {" "}

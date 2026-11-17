@@ -325,6 +325,7 @@ function PendingList({
   );
 }
 
+/** QR rail, merchant side: scan or paste a signed payment, verify it offline, settle when online. */
 export function MerchantSettlement() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
@@ -610,13 +611,7 @@ export function MerchantSettlement() {
   const waiting = pending.filter((p) => p.paymentId !== openId);
 
   return (
-    <main className="page">
-      <PageHeading
-        eyebrow="Merchant mode"
-        lines={["Accept", "offline", "payment."]}
-        lede="Verify the signature locally, then settle once you are back online."
-      />
-
+    <div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="scanner-title" className="rounded-[22px] bg-white p-1.5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)]">
           <div className="grainy on-dark overflow-hidden rounded-[18px] bg-card-dark p-4 text-white">
@@ -735,7 +730,7 @@ export function MerchantSettlement() {
           />
         </section>
       )}
-    </main>
+    </div>
   );
 }
 

@@ -27,6 +27,7 @@ import { tokenMeta } from "../lib/tokens";
 import { enrollStatus } from "../lib/gateway";
 import { USSD_ENABLED } from "../config";
 import { EnrollPhone } from "./EnrollPhone";
+import { DialCode } from "./site/DialCode";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
 import { PaymentQrDialog, type ShownPayment } from "./site/PaymentQr";
@@ -229,7 +230,7 @@ export function LedgerPanel({
         ["Reserved", fmt(BigInt(ledger.capacity))],
         ["Paid so far", fmt(BigInt(ledger.committedOnChain))],
         ["Per-payment cap", fmt(BigInt(ledger.perPaymentCap))],
-        ["Phone", ledger.enrolled ? ledger.phoneMasked ?? "Enrolled" : "Not enrolled"],
+        ["Phone", ledger.enrolled ? ledger.phoneMasked ?? "Linked" : "Not linked"],
         ["Gateway key", ledger.delegate ? shortKey(ledger.delegate) : "—"],
         ["Token", ledger.mint ? `${symbol} · ${shortKey(ledger.mint)}` : "—"],
       ]
@@ -289,7 +290,7 @@ export function LedgerPanel({
 
         {canEnroll && !ledger.enrolled && (
           <div className="space-y-4 rounded-[18px] bg-yellow/40 p-4">
-            <p className="m-0 text-sm font-semibold">No phone is enrolled yet, so USSD payments can&rsquo;t use this reservation.</p>
+            <p className="m-0 text-sm font-semibold">No phone is linked yet, so USSD payments can&rsquo;t use this reservation.</p>
             {enrollOpen ? (
               <EnrollPhone
                 reservation={ledger.reservation}
@@ -298,10 +299,12 @@ export function LedgerPanel({
                 onEnrolled={() => onChangeRef.current()}
               />
             ) : (
-              <PillButton size="sm" text="Enroll phone" onClick={() => setEnrollOpen(true)} disabled={!online} />
+              <PillButton size="sm" text="Link phone" onClick={() => setEnrollOpen(true)} disabled={!online} />
             )}
           </div>
         )}
+
+        {canEnroll && ledger.enrolled && phase === "Active" && <DialCode label={`Pay from ${ledger.phoneMasked ?? "your phone"}`} />}
 
         <dl className="m-0 grid grid-cols-2 gap-2">
           {metrics.map(([label, value]) => (

@@ -4,9 +4,10 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { Providers } from "./components/Providers";
 import { ReservePage } from "./components/ReservePage";
 import { Guide } from "./components/Guide";
-import { InstallPrompt, UpdatePrompt } from "./components/site/PwaPrompts";
+import { UpdatePrompt } from "./components/site/PwaPrompts";
 import { LedgerPanel } from "./components/LedgerPanel";
-import { MerchantSettlement, SignPayment } from "./components/PaymentFlows";
+import { SignPayment } from "./components/PaymentFlows";
+import { MerchantPage } from "./components/MerchantPage";
 import { Landing } from "./components/Landing";
 import { Connect } from "./components/Connect";
 import { Header } from "./components/site/Header";
@@ -190,7 +191,6 @@ function AppContent() {
           lede="Your ledger lives on this device and fails closed when it cannot verify your allowance."
           aside={<PillButton size="lg" text="Reserve funds" onClick={() => setView("reserve")} />}
         />
-        <InstallPrompt />
         {legacy.length > 0 && (
           <p className="mt-0 mb-4 text-sm text-muted-foreground">
             {legacy.length} reservation{legacy.length === 1 ? " was" : "s were"} made with an older PAT program and{" "}
@@ -277,7 +277,7 @@ function AppContent() {
       <SignPayment ledgers={signable} lockedCount={lockedCount} pending={pending} onSigned={() => void reload()} />
     );
   } else {
-    content = <MerchantSettlement />;
+    content = <MerchantPage online={online} />;
   }
 
   return (

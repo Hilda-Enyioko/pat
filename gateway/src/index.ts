@@ -8,6 +8,7 @@ import { hashPin, validPinFormat } from "./pin";
 import { handleUssd } from "./ussd";
 import { startKeeper } from "./keeper";
 import { mountEnroll } from "./enroll";
+import { mountMerchant } from "./merchant";
 import { useCors } from "./http";
 
 const app = express();
@@ -16,6 +17,7 @@ useCors(app);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 mountEnroll(app);
+mountMerchant(app);
 
 app.get("/health", async (_req, res) => {
   try {

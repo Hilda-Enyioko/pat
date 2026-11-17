@@ -19,7 +19,8 @@ export const GATEWAY_URL = gatewayUrl || null;
 /** Dial code shown in the UI. The default is an Africa's Talking sandbox code: simulator only. */
 export const USSD_SERVICE_CODE = (env.VITE_USSD_SERVICE_CODE as string | undefined) || "*384*50549#";
 export const USSD_SANDBOX = (env.VITE_USSD_SANDBOX as string | undefined) !== "false";
-export const USSD_ENABLED = (env.VITE_USSD_ENABLED as string | undefined) === "true" && Boolean(GATEWAY_URL);
+/** On whenever a gateway URL is set; VITE_USSD_ENABLED=false turns it off explicitly. */
+export const USSD_ENABLED = Boolean(GATEWAY_URL) && (env.VITE_USSD_ENABLED as string | undefined) !== "false";
 /** Local testing only. vite.config.ts fails a production build when this is set. */
 export const DEV_ENROLL_TOKEN = (env.VITE_DEV_ENROLL_TOKEN as string | undefined) || null;
 /** Lets devnet testers paste any classic SPL mint, not only the gateway's list. */

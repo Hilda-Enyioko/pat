@@ -36,6 +36,7 @@ async function processJob(job: Job) {
   const mint = new PublicKey(job.mint);
   const amount = BigInt(job.amount);
   const shown = `${fromBase(amount, job.decimals)} ${job.symbol}`;
+  job.merchant_code = Number(job.merchant_code); // bigint column: pg returns a string
 
   try {
     // A previous attempt may have landed after a timeout; the Payment PDA is the truth.

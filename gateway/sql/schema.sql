@@ -29,21 +29,37 @@ create table if not exists payments (
 );
 create index if not exists payments_status_idx on payments(status);
 
--- PWA enrollment: SMS OTP + wallet signature over `message`.
-create table if not exists enroll_challenges (
+-- Merchant codes are 10 digits (1000000000..4294967295, the top of the program's u32).
+alter table payments alter column merchant_code type bigint;
+
+-- Phone linking from the PWA. The app shows a 6-digit link code; the user dials the
+-- USSD service code from that phone and enters it. That proves the phone. The wallet
+-- is proven later by the reserve transaction (memo) or a signed message.
+create table if not exists enroll_links (
   id text primary key,
   phone text not null,
-  reservation text not null,
   owner text not null,
-  mint text not null,
-  decimals smallint not null,
-  symbol text not null,
-  message text not null,
-  otp_hash text not null,
+  code_hash text not null,
   attempts int not null default 0,
+  verified_at timestamptz,
   used boolean not null default false,
   ip text,
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
-create index if not exists enroll_challenges_phone_idx on enroll_challenges(phone, created_at);
+create index if not exists enroll_links_phone_idx on enroll_links(phone, created_at);
+
+-- Old SMS-OTP enrollment, replaced by enroll_links.
+drop table if exists enroll_challenges;
+
+-- One USSD merchant code per wallet. 'reserved' is free (database only);
+-- 'active' means register_merchant ran on-chain with payout = wallet.
+create table if not exists merchant_codes (
+  wallet text primary key,
+  code bigint not null unique check (code between 1000000000 and 4294967295),
+  status text not null default 'reserved' check (status in ('reserved','active')),
+  signature text,
+  ip text,
+  activated_at timestamptz,
+  created_at timestamptz not null default now()
+);

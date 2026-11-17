@@ -5,17 +5,18 @@ import { CalendarDays, CheckCircle2, Coffee, Tent } from "lucide-react";
 import * as PricingCard from "@/components/ui/pricing-card";
 import { cn } from "@/lib/utils";
 import { ALLOW_CUSTOM_MINT, MAX_PAYMENTS_PER_RESERVATION, SETTLE_GRACE_SECS } from "../config";
-import { buildReserveDelegatedIx, chainNow, fetchReservation, mapProgramError, PAYMENT_SPACE, RESERVATION_SPACE } from "../lib/pat";
+import { buildMemoIx, buildReserveDelegatedIx, chainNow, fetchReservation, mapProgramError, PAYMENT_SPACE, RESERVATION_SPACE } from "../lib/pat";
 import { fetchMintInfo, fetchTokenBalance, getAta, TOKEN_ACCOUNT_SPACE } from "../lib/spl";
-import { getMeta, type GatewayMeta } from "../lib/gateway";
-import { initLedgerIfAbsent } from "../lib/ledger";
+import { enrollMemo, finishPhoneLink, getMeta, startPhoneLink, type GatewayMeta, type PhoneLink } from "../lib/gateway";
+import { initLedgerIfAbsent, patchLedger } from "../lib/ledger";
 import { formatUnits, lamportsToSol, parseUnits, shortKey } from "../lib/format";
 import { placeholderSymbol, rememberToken } from "../lib/tokens";
 import { InputError, notify, reportError } from "../lib/notify";
 import { Field, inputClass } from "./site/Field";
 import { PillButton } from "./site/Pill";
 import { StatusNote } from "./site/StatusNote";
-import { EnrollPhone } from "./EnrollPhone";
+import { DialCode } from "./site/DialCode";
+import { DialToLink, maskPhone, normalizePhone, PhonePinFields, validatePhonePin, type PhonePin, type PhonePinErrors } from "./PhoneLink";
 
 const PRESETS = [
   { name: "Pocket", icon: <Coffee />, capacity: "5", cap: "2", hours: "6", max: "5", description: "Small change for a short trip." },
@@ -37,7 +38,7 @@ const when = (unix: number) =>
   new Date(unix * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 function Steps({ step }: { step: 1 | 2 | 3 }) {
-  const labels = ["Token and size", "Reserve on-chain", "Enroll your phone"];
+  const labels = ["Amount and phone", "Confirm your phone", "Reserve"];
   return (
     <ol className="m-0 grid list-none grid-cols-3 gap-2 p-0" aria-label={`Step ${step} of 3`}>
       {labels.map((label, i) => {
@@ -76,7 +77,12 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
   const [rents, setRents] = useState<{ reservation: bigint; payment: bigint; vault: bigint } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ reservation: string; symbol: string } | null>(null);
+  const [created, setCreated] = useState<{ reservation: string; symbol: string; phoneMasked: string | null } | null>(null);
+  const [owner, setOwner] = useState<PhonePin>({ phone: "", pin: "", pin2: "" });
+  const [ownerErrors, setOwnerErrors] = useState<PhonePinErrors>({});
+  const [link, setLink] = useState<PhoneLink | null>(null);
+  const [phoneOk, setPhoneOk] = useState(false);
+  const [plan, setPlan] = useState<{ capacityBase: bigint; capBase: bigint; max: number; delegate: PublicKey } | null>(null);
 
   useEffect(() => {
     if (!online) return;
@@ -151,34 +157,62 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
   const hoursNumber = Number(hours);
   const previewExpiry = Number.isFinite(hoursNumber) && hoursNumber > 0 ? Math.floor(Date.now() / 1000 + hoursNumber * 3600) : null;
 
+  /** Checks the amounts and the wallet balance. Throws InputError with a readable message. */
+  function checkPlan() {
+    if (!publicKey || !token || !meta) throw new InputError("Connect a wallet and pick a token first.");
+    let capacityBase: bigint;
+    let capBase: bigint;
+    try {
+      capacityBase = parseUnits(capacity, token.decimals);
+      capBase = parseUnits(cap, token.decimals);
+    } catch (e) {
+      throw new InputError(e instanceof Error ? e.message : "Enter plain numbers, like 20 or 2.5.");
+    }
+    if (capacityBase <= 0n || capBase <= 0n) throw new InputError("Amounts must be greater than zero.");
+    if (capBase > capacityBase) throw new InputError("The per-payment cap can't be more than the amount you reserve.");
+    if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) throw new InputError("Enter a spending window in hours, greater than zero.");
+    if (!Number.isInteger(max) || max <= 0 || max > MAX_PAYMENTS_PER_RESERVATION) {
+      throw new InputError(`Max payments must be a whole number from 1 to ${MAX_PAYMENTS_PER_RESERVATION}.`);
+    }
+    if (token.balance === null) throw new InputError(`Your wallet has no ${token.symbol} account. Get some ${token.symbol} first.`);
+    if (token.balance < capacityBase) {
+      throw new InputError(`You have ${formatUnits(token.balance, token.decimals, token.symbol)}, less than the amount you want to reserve.`);
+    }
+    const delegate = new PublicKey(meta.keeper);
+    if (delegate.equals(publicKey) || delegate.equals(PublicKey.default)) {
+      throw new InputError("The gateway key cannot be your own wallet or empty.");
+    }
+    return { capacityBase, capBase, max, delegate };
+  }
+
+  // Step 1 -> 2: everything checks out, so ask the gateway for a link code before any money moves.
+  async function onStart() {
+    const phoneErrors = validatePhonePin(owner);
+    setOwnerErrors(phoneErrors);
+    if (Object.keys(phoneErrors).length || !publicKey) return;
+    setBusy(true);
+    try {
+      setPlan(checkPlan());
+      setStatus("Getting a link code…");
+      setLink(await startPhoneLink(normalizePhone(owner.phone), publicKey.toBase58()));
+      setPhoneOk(false);
+    } catch (e) {
+      reportError(e, { title: e instanceof InputError ? "Check your reservation" : "Couldn't start" });
+    } finally {
+      setStatus(null);
+      setBusy(false);
+    }
+  }
+
+  // Step 3: one wallet approval reserves the tokens; the memo in the same transaction
+  // proves to the gateway that this wallet asked for this phone.
   async function onReserve() {
-    if (!publicKey || !token || !meta) return;
+    if (!publicKey || !token || !meta || !plan || !link) return;
     setBusy(true);
     setStatus("Preparing…");
+    let reservedAddress: string | null = null;
     try {
-      let capacityBase: bigint;
-      let capBase: bigint;
-      try {
-        capacityBase = parseUnits(capacity, token.decimals);
-        capBase = parseUnits(cap, token.decimals);
-      } catch (e) {
-        throw new InputError(e instanceof Error ? e.message : "Enter plain numbers, like 20 or 2.5.");
-      }
-      if (capacityBase <= 0n || capBase <= 0n) throw new InputError("Amounts must be greater than zero.");
-      if (capBase > capacityBase) throw new InputError("The per-payment cap can't be more than the amount you reserve.");
-      if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) throw new InputError("Enter a spending window in hours, greater than zero.");
-      if (!Number.isInteger(max) || max <= 0 || max > MAX_PAYMENTS_PER_RESERVATION) {
-        throw new InputError(`Max payments must be a whole number from 1 to ${MAX_PAYMENTS_PER_RESERVATION}.`);
-      }
-      if (token.balance === null) throw new InputError(`Your wallet has no ${token.symbol} account. Get some ${token.symbol} first.`);
-      if (token.balance < capacityBase) {
-        throw new InputError(`You have ${formatUnits(token.balance, token.decimals, token.symbol)}, less than the amount you want to reserve.`);
-      }
-      const delegate = new PublicKey(meta.keeper);
-      if (delegate.equals(publicKey) || delegate.equals(PublicKey.default)) {
-        throw new InputError("The gateway key cannot be your own wallet or empty.");
-      }
-
+      const { capacityBase, capBase, max: maxP, delegate } = plan;
       const now = await chainNow(connection);
       const expiresAt = BigInt(now + Math.round(hoursNumber * 3600));
       const reservationId = BigInt(Date.now());
@@ -188,13 +222,13 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
         capacity: capacityBase,
         perPaymentCap: capBase,
         expiresAt,
-        maxPayments: max,
+        maxPayments: maxP,
         mint: new PublicKey(token.mint),
         delegate,
       });
 
       const latest = await connection.getLatestBlockhash("confirmed");
-      const tx = new Transaction({ feePayer: publicKey, ...latest }).add(ix);
+      const tx = new Transaction({ feePayer: publicKey, ...latest }).add(ix, buildMemoIx(enrollMemo(link.linkId)));
 
       setStatus("Simulating…");
       const sim = await connection.simulateTransaction(tx);
@@ -209,20 +243,35 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
       const sig = await sendTransaction(tx, connection);
       setStatus("Confirming…");
       await connection.confirmTransaction({ signature: sig, ...latest }, "confirmed");
+      reservedAddress = reservation.toBase58();
 
       const acct = await fetchReservation(connection, reservation);
       if (!acct) throw new Error("Reservation not found after confirmation");
       const clockOffset = now - Math.floor(Date.now() / 1000);
       await initLedgerIfAbsent(reservation.toBase58(), acct, {
-        maxPayments: max,
+        maxPayments: maxP,
         clockOffset,
         decimals: token.decimals,
         symbol: token.symbol,
       });
       if (navigator.storage?.persist) await navigator.storage.persist().catch(() => undefined);
 
-      setCreated({ reservation: reservation.toBase58(), symbol: token.symbol });
-      notify.success(`Reserved ${capacity} ${token.symbol}`, `Now enroll your phone. Tx ${sig.slice(0, 8)}…`);
+      setStatus("Linking your phone…");
+      let phoneMasked: string | null = null;
+      try {
+        const res = await finishPhoneLink({ linkId: link.linkId, reservation: reservedAddress, pin: owner.pin, txSignature: sig });
+        phoneMasked = res.phoneMasked;
+        await patchLedger(reservedAddress, { enrolled: true, phoneMasked }).catch(() => undefined);
+        notify.success(`Reserved ${capacity} ${token.symbol}`, `${phoneMasked} can now pay by USSD.`);
+      } catch (e) {
+        // The money is safely reserved; only the phone link failed. The Ledger can retry it.
+        reportError(e, {
+          title: "Reserved, but the phone isn't linked",
+          message: `${e instanceof Error ? e.message : String(e)} Use "Link phone" on the Ledger to finish.`,
+        });
+      }
+      setOwner({ phone: "", pin: "", pin2: "" });
+      setCreated({ reservation: reservedAddress, symbol: token.symbol, phoneMasked });
     } catch (e) {
       console.error(e);
       reportError(e, {
@@ -235,20 +284,62 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
     }
   }
 
-  const step: 1 | 2 | 3 = created ? 3 : token ? 2 : 1;
+  const restart = () => {
+    setLink(null);
+    setPhoneOk(false);
+    setPlan(null);
+  };
+
+  const step: 1 | 2 | 3 = link ? (phoneOk ? 3 : 2) : 1;
 
   if (created) {
     return (
       <div className="flex flex-col gap-6">
-        <Steps step={3} />
         <section className="rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
-          <h2 className="display-h mb-2 text-[clamp(28px,3.4vw,40px)]">Enroll your phone</h2>
+          <h2 className="display-h mb-2 text-[clamp(28px,3.4vw,40px)]">{created.phoneMasked ? "You're set." : "Reserved."}</h2>
           <p className="mt-0 mb-6 max-w-xl text-[15px] leading-relaxed text-ink/80">
-            Reservation <span className="font-mono">{shortKey(created.reservation)}</span> is live. Link the phone that
-            will pay. If you stop here, the Ledger shows an &ldquo;Enroll phone&rdquo; button so you can finish later.
+            Reservation <span className="font-mono">{shortKey(created.reservation)}</span> is live.{" "}
+            {created.phoneMasked
+              ? `${created.phoneMasked} can pay now: dial the code, choose 1, enter the merchant's code, the amount and your PIN.`
+              : "Link your phone from the Ledger to start paying by USSD."}
           </p>
-          <EnrollPhone reservation={created.reservation} symbol={created.symbol} online={online} />
+          {created.phoneMasked && <DialCode />}
           <PillButton tone="light" size="sm" text="Go to ledger" className="mt-6" onClick={onCreated} />
+        </section>
+      </div>
+    );
+  }
+
+  if (link && plan && token) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Steps step={step} />
+        <section className="rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
+          {!phoneOk ? (
+            <>
+              <h2 className="display-h mb-2 text-[clamp(28px,3.4vw,40px)]">Confirm your phone</h2>
+              <p className="mt-0 mb-6 max-w-xl text-[15px] leading-relaxed text-ink/80">
+                Nothing is reserved yet. First prove the phone is yours: dial the code on it and type the link code.
+              </p>
+              <DialToLink link={link} phone={normalizePhone(owner.phone)} onVerified={() => setPhoneOk(true)} onRestart={restart} />
+            </>
+          ) : (
+            <>
+              <h2 className="display-h mb-2 text-[clamp(28px,3.4vw,40px)]">Reserve and finish</h2>
+              <p className="mt-0 mb-6 max-w-xl text-[15px] leading-relaxed text-ink/80">
+                {maskPhone(normalizePhone(owner.phone))} is confirmed. One wallet approval locks{" "}
+                <b>
+                  {capacity} {token.symbol}
+                </b>{" "}
+                for {hours}h (up to {cap} per payment) and links the phone.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <PillButton size="lg" text={busy ? "Working…" : "Approve in wallet"} disabled={busy || !online} onClick={() => void onReserve()} />
+                <PillButton tone="light" text="Start over" disabled={busy} onClick={restart} />
+              </div>
+            </>
+          )}
+          {status && <StatusNote className="mt-5">{status}</StatusNote>}
         </section>
       </div>
     );
@@ -330,13 +421,13 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
 
       <section aria-labelledby="ussd-custom-title" className="rounded-[22px] bg-white p-5 shadow-[0_16px_36px_-24px_rgba(15,15,14,.35)] sm:p-8">
         <h2 id="ussd-custom-title" className="display-h mb-6 text-[clamp(28px,3.4vw,40px)]">
-          Token and size
+          Amount and phone
         </h2>
         <form
           className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]"
           onSubmit={(e) => {
             e.preventDefault();
-            void onReserve();
+            void onStart();
           }}
         >
           <div className="grid content-start gap-5 sm:grid-cols-2">
@@ -406,6 +497,10 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
             <Field id="ussd-max" label="Max payments" hint="Each payment uses one receipt; this prepays their rent.">
               <input id="ussd-max" className={inputClass} value={maxPayments} onChange={(e) => setMaxPayments(e.target.value)} inputMode="numeric" disabled={disabled} />
             </Field>
+            <div className="mt-2 border-t border-ink/10 pt-5 sm:col-span-2">
+              <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">The phone that will pay</p>
+            </div>
+            <PhonePinFields idPrefix="ussd" value={owner} onChange={setOwner} errors={ownerErrors} disabled={disabled} />
             {metaError && (
               <StatusNote tone="error" className="sm:col-span-2">
                 {metaError}
@@ -434,7 +529,7 @@ export function UssdReserveForm({ online, onCreated }: { online: boolean; onCrea
             <PillButton
               type="submit"
               size="lg"
-              text={busy ? "Working…" : "Reserve tokens"}
+              text={busy ? "Working…" : "Next: confirm phone"}
               disabled={!publicKey || !token || !meta || disabled}
               className="w-full"
             />
