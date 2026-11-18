@@ -4,6 +4,7 @@ import { q } from "./db";
 import { config } from "./config";
 import { merchantPayout, readReservation } from "./chain";
 import { verifyPin } from "./pin";
+import { linkPhone } from "./enroll";
 
 export type UssdInput = { sessionId: string; phone: string; text: string };
 type Enr = {
@@ -57,14 +58,30 @@ async function checkPin(enr: Enr, pin: string): Promise<string | null> {
   return left > 0 ? `Wrong PIN. ${left} attempt(s) left.` : "Wrong PIN. PIN locked.";
 }
 
+const CODE_MAX = 4_294_967_295; // u32::MAX, the program's merchant code type
+const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
+
 export async function handleUssd({ sessionId, phone, text }: UssdInput): Promise<string> {
   const [enr] = await q<Enr>("select * from enrollments where phone=$1", [phone]);
-  if (!enr) return end("This number is not set up for PAT. Open the PAT app to enable USSD.");
-
   const steps = text === "" ? [] : text.split("*");
-  if (steps.length === 0) return con("PAT\n1. Pay merchant\n2. Balance");
+
+  // Not enrolled yet: the only thing this number can do is link itself.
+  if (!enr) {
+    if (steps.length === 0) return con("Welcome to PAT\n1. Link this phone");
+    if (steps[0] !== "1" || steps.length > 2) return end("Open the PAT app to set up USSD payments.");
+    if (steps.length === 1) return con("Enter the 6-digit link code shown in the PAT app:");
+    return end(await linkPhone(phone, steps[1]));
+  }
+
+  if (steps.length === 0) return con("PAT\n1. Pay merchant\n2. Balance\n3. Link to a new reservation");
 
   const [choice, a, b, c] = steps;
+
+  if (choice === "3") {
+    if (steps.length === 1) return con("Enter the 6-digit link code shown in the PAT app:");
+    if (steps.length > 2) return end("Invalid choice.");
+    return end(await linkPhone(phone, a));
+  }
 
   if (choice === "2") {
     if (steps.length === 1) return con("Enter PIN:");
@@ -74,17 +91,19 @@ export async function handleUssd({ sessionId, phone, text }: UssdInput): Promise
   }
 
   if (choice !== "1" || steps.length > 4) return end("Invalid choice.");
-  if (steps.length === 1) return con("Merchant code:");
+  if (steps.length === 1) return con("Enter merchant code:");
 
-  if (!/^\d{1,9}$/.test(a) || Number(a) === 0) return end("Invalid merchant code.");
+  if (!/^\d{1,10}$/.test(a) || Number(a) === 0 || Number(a) > CODE_MAX) return end("Invalid merchant code.");
   const merchantCode = Number(a);
-  if (!(await merchantPayout(merchantCode))) return end("Unknown merchant code.");
-  if (steps.length === 2) return con(`Amount (${enr.symbol}):`);
+  const payout = await merchantPayout(merchantCode);
+  if (!payout) return end("Unknown merchant code. Ask the merchant to activate it in the PAT app.");
+  if (steps.length === 2) return con(`Merchant ${merchantCode}\nWallet ${short(payout.toBase58())}\nAmount (${enr.symbol}):`);
 
   const amount = toBase(b, enr.decimals);
   if (amount === null) return end("Invalid amount.");
   const shown = `${fromBase(amount, enr.decimals)} ${enr.symbol}`;
-  if (steps.length === 3) return con(`Pay ${shown} to merchant ${merchantCode}.\nEnter PIN:`);
+  if (steps.length === 3)
+    return con(`Pay ${shown} to ${merchantCode} (${short(payout.toBase58())})?\nEnter PIN to confirm:`);
 
   return pay(enr, sessionId, merchantCode, amount, shown, c);
 }

@@ -8,6 +8,7 @@ import { hashPin, validPinFormat } from "./pin";
 import { handleUssd } from "./ussd";
 import { startKeeper } from "./keeper";
 import { mountEnroll } from "./enroll";
+import { mountMerchant } from "./merchant";
 import { useCors } from "./http";
 
 const app = express();
@@ -16,6 +17,7 @@ useCors(app);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 mountEnroll(app);
+mountMerchant(app);
 
 // Africa's Talking USSD callback (form-encoded). Reply must be text/plain "CON ..." or "END ...".
 app.post("/ussd", async (req, res) => {

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Copy, Menu, MoveRight, X } from "lucide-react";
-import { CLUSTER, PROGRAM_ID } from "@/config";
+import { CLUSTER, PROGRAM_ID, USSD_ENABLED } from "@/config";
+import { formatMerchantCode } from "@/lib/gateway";
+import { useMerchantCode } from "@/hooks/useMerchantCode";
+import { InstallButton } from "./PwaPrompts";
 import { shortKey } from "@/lib/format";
 import { APP_VIEWS, FAUCET_URL, SOURCE_URL, type View } from "@/lib/views";
 import { Logo } from "./Logo";
@@ -90,6 +93,7 @@ export function Header({
     }
   };
   const netLabel = online ? "Online" : reachable ? "Offline" : "No network";
+  const merchant = useMerchantCode(online);
 
   return (
     <header className="hdr" ref={headerRef} data-open={open || undefined} data-wallet-open={walletOpen || undefined}>
@@ -152,6 +156,19 @@ export function Header({
               {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
             </button>
           </div>
+          {USSD_ENABLED && merchant.code && (
+            <button
+              type="button"
+              onClick={() => go("merchant")}
+              className="mt-3 flex w-full cursor-pointer items-center justify-between gap-3 rounded-[14px] border-0 bg-paper px-4 py-3 text-left text-ink"
+            >
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Merchant code</span>
+                <span className="block font-mono text-lg font-medium">{formatMerchantCode(merchant.code.code)}</span>
+              </span>
+              <span className="text-xs font-semibold">{merchant.code.status === "active" ? "Active" : "Activate →"}</span>
+            </button>
+          )}
           <div className="mt-3 flex gap-2">
             <PillButton size="sm" text="Open ledger" className="flex-1" onClick={() => go("ledger")} />
             <PillButton size="sm" tone="light" text="Disconnect" className="flex-1" onClick={disconnect} />
@@ -225,6 +242,7 @@ export function Header({
           >
             How it works
           </button>
+          <InstallButton onDone={() => setOpen(false)} />
           <button type="button" onClick={onToggleOnline} disabled={!reachable}>
             {reachable ? `Mode: ${netLabel} (switch)` : "No network: offline"}
           </button>

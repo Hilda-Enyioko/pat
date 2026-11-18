@@ -319,3 +319,9 @@ export async function chainNow(c: Connection): Promise<number> {
   } catch { /* fall through */ }
   return Math.floor(Date.now() / 1000);
 }
+
+export const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+
+/** SPL Memo with no signer keys: plain text recorded in the transaction. */
+export const buildMemoIx = (text: string) =>
+  new TransactionInstruction({ programId: MEMO_PROGRAM_ID, keys: [], data: Buffer.from(new TextEncoder().encode(text)) });

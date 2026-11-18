@@ -76,26 +76,34 @@ PAT never presents an offline payment as blockchain-confirmed before it is.
 ## How the USSD rail works
 
 ```text
- ONLINE (payer, once)             GSM ONLY (payer)                     SERVER
-┌─────────────────────┐        ┌──────────────────────┐        ┌────────────────────────────┐
-│ reserve_delegated   │        │ dial *384*50549#     │        │ POST /ussd (Africa's       │
-│ tokens -> vault     │        │ pick merchant code,  │ ─────► │ Talking) -> verify PIN ->  │
-│ delegate = keeper   │        │ amount, PIN          │        │ queue payment (pending)    │
-│ enroll phone + PIN  │        └──────────────────────┘        └─────────────┬──────────────┘
-└─────────────────────┘                                                      │
-                                                                             ▼
-        SMS confirmation  ◄──────────  keeper: settle_delegated  ◄──── payments table
-                                       vault -> merchant token account
+ ONLINE (payer, once, in the PWA)        GSM ONLY (payer)                 SERVER
+┌──────────────────────────────┐     ┌──────────────────────┐     ┌────────────────────────────┐
+│ amount + phone + 4-digit PIN │     │ dial *384*50549#     │     │ POST /ussd (Africa's       │
+│ phone dials in a link code   │     │ merchant code,       │ ──► │ Talking) -> verify PIN ->  │
+│ ONE wallet approval:         │     │ amount, PIN          │     │ queue payment (pending)    │
+│  reserve_delegated + memo    │     └──────────────────────┘     └─────────────┬──────────────┘
+└──────────────────────────────┘                                                │
+                                                                                ▼
+     SMS to payer, merchant sees Confirmed  ◄── keeper: settle_delegated ◄── payments table
+                                                vault -> merchant token account
 ```
 
-1. **Reserve and enroll (online, once).** The payer calls `reserve_delegated` from the PWA, naming the gateway's keeper key as `delegate`. Tokens move into a vault ATA owned by the reservation PDA. The payer then enrolls their phone number and a PIN against that reservation.
-2. **Pay (USSD).** The payer dials the service code and enters a merchant code, an amount and their PIN. The gateway checks the PIN (hashed with a server-side pepper, locked out after repeated failures) and queues the payment.
-3. **Settle (keeper).** A background keeper claims pending payments and calls `settle_delegated`. The program checks the signer is the reservation's delegate, the merchant's token account belongs to the **registered payout address**, the window, the cap and the capacity, then transfers tokens from the vault, signed by the reservation PDA.
-4. **Confirm.** The payer gets an SMS. As on the QR rail, the Payment PDA is the source of truth.
+1. **Set up (online, once).** On the Reserve page the payer picks a token and amount, types the phone number that will pay and chooses a 4-digit PIN. Nothing is reserved yet.
+2. **Prove the phone.** The app shows a 6-digit link code. The payer dials the service code **from that phone**, chooses "Link this phone" and types the code. The gateway marks the link verified; the app is polling and moves on.
+3. **One wallet approval.** The app sends `reserve_delegated` (naming the gateway keeper as `delegate`, tokens into a vault ATA owned by the reservation PDA) and, in the **same transaction**, an SPL Memo `PAT-ENROLL-v2 <linkId>`. The gateway reads that transaction: confirmed, signed by the owner, touches the reservation, carries the memo. That proves the wallet without a separate "sign a message" step. The PIN is then hashed and stored against the phone.
+4. **Pay (USSD).** The payer dials the service code, enters the merchant's 10-digit code and an amount. The phone shows whose wallet the code pays, then asks for the PIN. The gateway checks the PIN (hashed with a server-side pepper, locked after 3 failures) and queues the payment.
+5. **Settle (keeper, automatic).** A background keeper calls `settle_delegated`. The program checks the signer is the reservation's delegate, the merchant's token account belongs to the **registered payout address**, the window, the cap and the capacity, then transfers tokens from the vault. **The merchant does nothing**: there is no settle step for merchants on this rail.
+6. **Confirm.** The payer gets an SMS; the merchant sees the payment turn Confirmed on the Merchant page. The Payment PDA is the source of truth.
 
-### Merchant registry
+A reservation that already exists (or a phone moving to a new reservation) links from the Ledger's **Link phone** button: same dial-in step, then a `signMessage` over a fixed `PAT-ENROLL-v2` text instead of the memo.
 
-Merchants on the USSD rail are identified by a short numeric code that a person can type. An admin registers `code -> payout` once (`init_config`, `register_merchant`). A code can never be overwritten. Funds can only ever go to a token account owned by the registered payout address, so neither the keeper nor a typo can redirect them.
+### Merchant codes
+
+Every wallet that connects to the PWA gets a **10-digit merchant code** automatically (1000000000 to 4294967295, the top of the program's `u32` code space, about 3.3 billion codes). Getting one is free and off-chain: the gateway stores it in `merchant_codes`.
+
+To accept USSD payments the merchant taps **Activate** once. The wallet signs a fixed `PAT-MERCHANT-v1` message (not a transaction), and the gateway calls `register_merchant(code, payout = that wallet)` with the on-chain Config admin key, which pays the ~0.0012 SOL rent. A code can never be overwritten, and funds can only ever reach a token account owned by the registered payout, so neither the keeper nor a typo can redirect them.
+
+The Merchant page shows the code, the activation state, and **Payments received** (pending, settling, confirmed, failed, with an explorer link). QR payments stay on their own tab with the scan-and-settle flow.
 
 ---
 
@@ -244,7 +252,10 @@ The gateway is a small Node service in `gateway/`.
 | Piece | File | Role |
 |---|---|---|
 | HTTP server | `src/index.ts` | `POST /ussd` (Africa's Talking callback), `POST /enroll` (dev only), `GET /health` |
-| USSD menu logic | `src/ussd.ts` | Session text parsing, menu screens, PIN check, queues payments |
+| Phone linking | `src/enroll.ts` | `GET /meta`, `POST /enroll/start`, `GET /enroll/link/:id`, `POST /enroll/finish`, `GET /enroll/status/:reservation` |
+| Merchant codes | `src/merchant.ts` | `GET /merchant/me/:wallet`, `POST /merchant/activate`, `GET /merchant/payments/:wallet`, `GET /merchant/lookup/:code` |
+| CORS, signatures | `src/http.ts`, `src/sig.ts` | Browser CORS for the routes above; ed25519 checks for `signMessage`; rate limits |
+| USSD menu logic | `src/ussd.ts` | Session text parsing, menu screens, phone linking, PIN check, queues payments |
 | Keeper | `src/keeper.ts` | Claims `pending` payments with `FOR UPDATE SKIP LOCKED`, calls `settle_delegated`, retries transient errors, sends SMS |
 | Chain access | `src/chain.ts` | Anchor program client, PDAs, `settleDelegated`, error mapping |
 | PIN handling | `src/pin.ts` | Hashing with a server-side pepper, format checks |
@@ -259,11 +270,16 @@ The gateway is a small Node service in `gateway/`.
 | `DATABASE_URL` | PostgreSQL connection string |
 | `RPC_URL` | Solana RPC. Use a dedicated devnet RPC, not the public endpoint |
 | `KEEPER_KEYPAIR_JSON` | Keeper (delegate) keypair as a JSON array. Locally you can use `KEEPER_KEYPAIR=/path/to/file.json` instead |
+| `ADMIN_KEYPAIR_JSON` | On-chain Config admin keypair. Needed only to activate merchant codes. Locally `ADMIN_KEYPAIR=/path` |
+| `CORS_ORIGINS` | Browser origins allowed to call the gateway, e.g. `https://pat-sol.vercel.app` |
+| `CLUSTER` | `devnet` |
+| `MINTS` | Optional. Tokens offered in the PWA, `MINT:SYMBOL,MINT:SYMBOL` |
+| `USSD_SERVICE_CODE` | The code shown to users, e.g. `*384*50549#` |
 | `PIN_PEPPER` | Server-side secret mixed into PIN hashes |
 | `ENROLL_TOKEN` | Shared secret for the dev-only `/enroll` endpoint |
 | `IDL_PATH` | Optional. Defaults to `./idl/pat.json`, then `../target/idl/pat.json` |
 | `PGSSL` | Set to `off` to disable TLS to Postgres |
-| Africa's Talking credentials | Used by `sms.ts` |
+| `AT_USERNAME`, `AT_API_KEY` | Africa's Talking. `sandbox` sends SMS to the simulator only. Without them SMS is only logged |
 
 **Operational notes**
 
@@ -345,7 +361,8 @@ The QR rail still needs the payer to own a smartphone with the PWA. v2 extends t
 - **The gateway is a trusted party.** PIN verification happens off-chain. A compromised keeper key or gateway could settle payments the payer never authorized, up to the reservation's capacity, to registered merchants. This is the price of letting a basic phone spend. The on-chain limits bound the loss, and the payer chooses the capacity.
 - **No early revoke.** The payer cannot cancel a delegated reservation before `settle_deadline`. A shorter `expires_at` is the current control.
 - **USSD and SIM risks.** USSD sessions pass through the operator and aggregator, and a SIM swap transfers the phone number. The PIN, lockout and low per-payment cap reduce exposure, but they are not equivalent to a signature from a key the user holds.
-- **Dev-only enrollment.** `/enroll` is protected by a shared token. It is a development shortcut, to be replaced by wallet-signed proof of ownership plus SMS OTP.
+- **Enrollment.** The PWA proves the phone by a USSD dial-in with a one-time link code, and the wallet by the reserve transaction's memo (or a signed message). The old `/enroll` endpoint with a shared token remains for local testing only, and a production PWA build refuses to embed that token.
+- **Merchant activation trusts the admin key on the gateway.** Whoever holds it can register codes. It cannot move anyone's funds.
 
 Signature verification (the ed25519 precompile plus instructions-sysvar byte matching) is where most bugs live in designs like this. It needs dedicated negative tests (wrong signer, tampered amount, wrong message, precompile not immediately before `settle`) before any real-value use.
 
@@ -396,6 +413,7 @@ Run through the Africa's Talking sandbox simulator (service code `*384*50549#`) 
 | Rust integration tests, USSD rail (`programs/pat/tests/token_rail.rs`, LiteSVM) | Token vault funding, delegated settle, non-delegate and owner rejected, cap, zero amount, over-capacity, unregistered merchant, wrong payout owner, wrong mint, double settle, rent reserve exhaustion, no grace window at expiry, rail separation in both directions, `withdraw_token` timing, owner-only withdraw and partial refund, merchant registry admin rules |
 | TypeScript tests (Anchor, local validator or devnet) | `reserve`, `settle` and the SPL delegated rail (`spl-delegated.ts`) |
 | Bankrun tests (`withdraw.bankrun.ts`, controllable clock) | Withdraw blocked until strictly after `settle_deadline` (including exactly at it), owner-only withdraw, lamport invariant as an equality after every settle, replay rejected, Payment records outlive the Reservation |
+| PWA unit tests (`app/src/__tests__`, vitest) | Amount parsing, instruction layouts against the IDL, ledger rail rules |
 | Devnet e2e | QR flow via `scripts/e2e-devnet.ts`; USSD flow via the gateway `seed` script and the Africa's Talking simulator |
 
 ---
@@ -476,7 +494,7 @@ npm start                  # serves POST /ussd, POST /enroll, GET /health
 npm run seed               # creates a test mint, merchant and reservation, then enrolls a phone
 ```
 
-To deploy on Render: create a PostgreSQL database, apply the schema (`enrollments`, `payments`), create a web service with root directory `gateway`, build command `npm install`, start command `npm start`, health check path `/health`, and set the environment variables above. Point the Africa's Talking USSD callback at `https://<service>.onrender.com/ussd`.
+To deploy on Render: create a PostgreSQL database, apply the schema (`enrollments`, `payments`, `enroll_links`, `merchant_codes`; re-run `sql/schema.sql` after updates, it is idempotent), create a web service with root directory `gateway`, build command `npm install`, start command `npm start`, health check path `/health`, and set the environment variables above. Point the Africa's Talking USSD callback at `https://<service>.onrender.com/ussd`.
 
 Notes: keep the project on the Linux filesystem under WSL2 (building on `/mnt/c` was roughly 10x slower and prevented `solana-test-validator` from starting). The cluster is compiled into the program via `CLUSTER_ID`, so deploying to another cluster means changing that constant and rebuilding.
 
@@ -494,12 +512,12 @@ Notes: keep the project on the Linux filesystem under WSL2 (building on `/mnt/c`
 - [x] USSD rail: delegate, merchant registry, SPL token vault, `settle_delegated`, `withdraw_token`
 - [x] USSD gateway with keeper, PIN lockout and SMS confirmations, deployed on Render
 - [x] End-to-end run through the Africa's Talking sandbox simulator
+- [x] PWA: one-flow USSD setup (amount, phone, PIN, USSD dial-in, one wallet approval) and `withdraw_token` in the Ledger
+- [x] Automatic 10-digit merchant codes with one-tap activation and a "Payments received" view
+- [x] Installable PWA and a plain-language payment guide
 
 **Next**
 
-- [ ] PWA: create an SPL delegated reservation and enroll a phone from the browser
-- [ ] PWA: `withdraw_token` button in the Ledger view
-- [ ] Replace dev-only `/enroll` with wallet-signed proof of ownership plus SMS OTP
 - [ ] Gateway hardening: authenticate the Africa's Talking callback, rate limiting, keeper balance alerts
 - [ ] Negative signature tests (wrong signer, tampered amount, precompile not adjacent)
 - [ ] Failure-case UX: replayed intent, over cap, over offline balance, expired intent, after `settle_deadline`, wrong cluster

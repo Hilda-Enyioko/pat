@@ -18,6 +18,6 @@ export function cors(req: Request, res: Response, next: NextFunction) {
 }
 
 export function useCors(app: Express) {
-  // app.use matches by prefix, so "/enroll" also covers /enroll/challenge etc.
-  for (const path of ["/meta", "/enroll"]) app.use(path, cors);
+  // app.use matches by prefix, so "/enroll" also covers /enroll/start etc.
+  for (const path of ["/meta", "/enroll", "/merchant"]) app.use(path, cors);
 }
