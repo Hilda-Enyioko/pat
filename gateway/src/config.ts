@@ -11,7 +11,7 @@ const need = (k: string) => {
 
 function loadKeeper(): Keypair {
   // Render: set KEEPER_KEYPAIR_JSON to the JSON array. Local: KEEPER_KEYPAIR=/path/to/file.json
-  const raw = process.env.KEEPER_KEYPAIR_JSON ?? fs.readFileSync(need("KEEPER_KEYPAIR"), "utf8");
+  const raw = process.env.KEEPER_KEYPAIR_JSON?.trim() || fs.readFileSync(need("KEEPER_KEYPAIR"), "utf8");
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(raw)));
 }
 
@@ -25,7 +25,7 @@ function resolveIdl(): string {
 }
 
 export const config = {
-  rpcUrl: process.env.RPC_URL ?? "https://api.devnet.solana.com",
+  rpcUrl: process.env.VITE_RPC_URL ?? "https://api.devnet.solana.com",
   databaseUrl: need("DATABASE_URL"),
   keeper: loadKeeper(),
   pinPepper: need("PIN_PEPPER"),
