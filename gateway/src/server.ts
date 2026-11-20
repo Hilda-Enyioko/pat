@@ -16,6 +16,10 @@ app.set("trust proxy", 1); // Render terminates TLS in front of us; req.ip must 
 useCors(app);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.use((req, _res, next) => {
+  console.log(new Date().toISOString(), req.method, req.originalUrl, req.body);
+  next();
+});
 mountEnroll(app);
 mountMerchant(app);
 
