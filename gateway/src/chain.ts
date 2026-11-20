@@ -130,6 +130,6 @@ export function mapError(e: any): MappedError {
     case undefined: break;
     default: return { ...base, userMessage: "Payment could not be completed. Contact support." };
   }
-  const transient = /blockhash|timeout|timed out|429|fetch failed|ECONN|node is behind/i.test(raw);
+    const transient = /blockhash|block height|not confirmed|expired|timeout|timed out|429|fetch failed|ECONN|node is behind/i.test(raw);
   return { ...base, retriable: transient, userMessage: "Network problem. Please try again." };
 }

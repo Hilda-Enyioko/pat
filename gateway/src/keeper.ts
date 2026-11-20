@@ -49,12 +49,27 @@ async function processJob(job: Job) {
     await markSettled(job, signature, shown);
   } catch (e) {
     const err = mapError(e);
+    console.error("settle failed", job.id, `attempt ${job.attempts}`, err.raw);
+
     if (err.alreadySettled) return markSettled(job, null, shown);
-    if (err.retriable && job.attempts < MAX_ATTEMPTS) {
+
+    // Confirmation can throw even though the tx landed. Ask the chain before
+    // declaring failure: true = landed, false = not landed, null = couldn't check.
+    let landed: boolean | null;
+    try {
+      landed = await paymentExists(reservation, job.payment_id);
+    } catch {
+      landed = null;
+    }
+    if (landed) return markSettled(job, null, shown);
+
+    // Retry on transient errors, and also when we couldn't verify either way.
+    if ((err.retriable || landed === null) && job.attempts < MAX_ATTEMPTS) {
       await q("update payments set status='pending', error=$2, updated_at=now() where id=$1",
         [job.id, err.raw.slice(0, 500)]);
       return sleep(2000 * job.attempts);
     }
+
     await q("update payments set status='failed', error=$2, updated_at=now() where id=$1",
       [job.id, err.raw.slice(0, 500)]);
     await notify(job.phone,
